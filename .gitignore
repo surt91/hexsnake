@@ -9,6 +9,10 @@ python/.venv/
 __pycache__/
 *.pyc
 
+# E2E
+e2e/node_modules/
+e2e/package-lock.json
+
 # Editor/OS
 .idea/
 .vscode/

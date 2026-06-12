@@ -29,25 +29,40 @@ headless. Darstellungs-/Eingabefehler (Logik korrekt, Anzeige falsch) →
 - **Determinismus-Test**: gleicher Seed + gleiche Inputs zweimal ausführen,
   Zustände müssen identisch sein (schützt Replays und Server-Verifikation).
 
-## UI-Zustände: Snapshot-Tests mit egui_kittest
+## UI-Zustände: Snapshot-Tests mit egui_kittest (eingerichtet)
 
-Für „sieht Zustand X richtig aus?" ist `egui_kittest` (offizielles
-egui-Test-Harness, Rendering via wgpu) das Mittel der Wahl — kein Browser
-nötig, beliebige Zustände direkt konstruierbar:
+Für „sieht Zustand X richtig aus?" sind die `egui_kittest`-Snapshot-Tests
+das Mittel der Wahl — kein Browser nötig, läuft in `cargo test`
+(Rendering via wgpu, braucht einen Vulkan-Adapter; GPU oder lavapipe):
 
-1. `GameState` im Test gezielt bauen (z. B. Schlange am Rand im
-   periodischen Modus, Game-Over-Screen).
-2. Harness rendert die App/das Panel, `harness.snapshot("name")` vergleicht
-   gegen ein abgelegtes Referenzbild.
-3. Referenzbilder aktualisieren: `UPDATE_SNAPSHOTS=1 cargo test -p snake-app`
-   (Env-Var-Name bei Einrichtung gegen die egui_kittest-Doku prüfen).
-   Geänderte Snapshots im Diff ansehen, bevor sie committet werden.
+- Bestehende Tests: `crates/snake-app/src/snapshot_tests.rs` (ein
+  Snapshot je Theme, deterministisch via Seed + Inputskript +
+  simulierter kittest-Uhr). Referenzen: `crates/snake-app/tests/snapshots/`.
+- **Wichtig**: kittest springt mit der simulierten Uhr zum nächsten
+  `request_repaint_after`-Termin ⇒ **ein `harness.step()` = ein
+  Game-Tick**.
+- Mehrere Harnesses pro Test: Ergebnisse mit `SnapshotResults` +
+  `take_snapshot_results()` mergen, sonst panict der Drop-Handler.
+- Referenzbilder aktualisieren: `UPDATE_SNAPSHOTS=1 cargo test -p snake-app`,
+  geänderte PNGs im Diff ansehen, bevor sie committet werden.
+- Snapshots sparsam einsetzen (Zustände, nicht Logik) — Logik gehört als
+  Seed+Input-Test nach `snake-core`.
 
 Die erzeugten PNGs eignen sich auch als Screenshot-Quelle, um dem Nutzer
-einen Zustand zu zeigen: Snapshot-Test schreiben, Bild aus dem
-Snapshot-Verzeichnis anhängen.
+einen Zustand zu zeigen.
 
-## Browser: Screenshots & Steuerung mit Playwright CLI
+## E2E-Smoke-Test (WASM-Schicht)
+
+`e2e/smoke.mjs` (siehe `e2e/README.md`) deckt ab, was kittest nicht kann:
+WASM-Bootstrap, URL-Parameter, Browser-Events, localStorage-Persistenz.
+Tastaturgetrieben, Assertions über localStorage-Inhalt — keine
+Pixel-Koordinaten, keine Screenshot-Vergleiche. Manuell ausführen, wenn an
+dieser Schicht etwas geändert wurde.
+
+## Browser: Ad-hoc-Debugging mit Playwright CLI
+
+(Nur zum explorativen Debuggen — als Regressionstest stattdessen die
+kittest-Snapshots bzw. `e2e/smoke.mjs` verwenden.)
 
 Voraussetzung: laufender Dev-Server (`/run-web`), einmalig
 `npx playwright install chromium`.

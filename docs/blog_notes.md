@@ -200,3 +200,14 @@ dass man es Monate später noch versteht.
   einem Ring — die Positionen sind exakt die sechs Hex-Gittervektoren,
   wiederverwendet aus dem Band-Rendering. Eintritts-Bedingung
   `any_touches()` hält das Pad von Desktop-Bildschirmen fern.
+- **Teststrategie-Kurskorrektur**: Die Ad-hoc-Playwright-Skripte mit
+  Pixel-Koordinaten waren als Einmal-Verifikation okay, als Tests
+  unbrauchbar (drei Koordinaten-Rekalibrierungen in einer Session).
+  Jetzt dreistufig: Logik headless in snake-core, UI-Zustände als
+  egui_kittest-Snapshots (deterministisch, da nativer Renderer + Seed +
+  simulierte Uhr), und *ein* tastaturgetriebener Browser-Smoke-Test mit
+  localStorage-Assertions statt Screenshots.
+- **egui_kittest-Aha**: Die simulierte Uhr springt pro `step()` direkt zum
+  nächsten `request_repaint_after`-Termin — bei festem Game-Tick heißt das
+  exakt **1 step = 1 tick**. Erst verwirrend (Spiel „zu schnell"), dann
+  das perfekte Werkzeug: Tick-genaues Vorspulen ohne Zeitrechnerei.
