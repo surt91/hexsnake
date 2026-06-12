@@ -55,12 +55,16 @@ durchspielbar.
 - [x] Debug-Feature: Seed per URL-Parameter (`?seed=42`, im WASM-Build via
       Query-String, nativ via CLI-Arg) — macht Läufe reproduzierbar für
       Browser-Screenshots und Bug-Reports (vgl. Skill `/test-debug`).
-- [ ] **GitHub-Pages-Deployment**: GitHub-Actions-Workflow, der bei Push auf
+- [x] **GitHub-Pages-Deployment**: GitHub-Actions-Workflow, der bei Push auf
       `main` den Release-Build erzeugt und veröffentlicht
       (`trunk build --release --public-url /hexsnake/` — der Repo-Name als
       Subpfad ist Pflicht, sonst laden WASM/JS-Assets nicht; Deployment via
       `actions/deploy-pages`, wasm32-Target + trunk im Workflow
       installieren/cachen).
+      *Hinweis: Workflow liegt bereit und der Release-Build ist lokal
+      verifiziert; es existiert aber noch kein GitHub-Remote — Repo anlegen,
+      `git remote add` + Push und Pages aktivieren (Source: GitHub Actions)
+      muss einmalig manuell passieren.*
 
 **Done wenn:** HexSnake ist im Browser mit QWEASD spielbar, beide
 Randbedingungen funktionieren sichtbar korrekt, und das Spiel ist öffentlich
