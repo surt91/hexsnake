@@ -52,9 +52,16 @@ durchspielbar.
       oder frei wählbar, Startgeschwindigkeit.
 - [ ] Visuelles Feedback für periodischen Modus (z. B. Randmarkierung statt
       Mauer-Optik).
+- [ ] **GitHub-Pages-Deployment**: GitHub-Actions-Workflow, der bei Push auf
+      `main` den Release-Build erzeugt und veröffentlicht
+      (`trunk build --release --public-url /hexsnake/` — der Repo-Name als
+      Subpfad ist Pflicht, sonst laden WASM/JS-Assets nicht; Deployment via
+      `actions/deploy-pages`, wasm32-Target + trunk im Workflow
+      installieren/cachen).
 
 **Done wenn:** HexSnake ist im Browser mit QWEASD spielbar, beide
-Randbedingungen funktionieren sichtbar korrekt.
+Randbedingungen funktionieren sichtbar korrekt, und das Spiel ist öffentlich
+über GitHub Pages erreichbar.
 
 ## Phase 3 — Highscore (lokal)
 
@@ -144,8 +151,11 @@ wählbar.
       und später nachgereicht. UI zeigt lokale und globale Tabelle.
 - [ ] Daily Challenge: Tagesseed vom Server, lokaler datumsbasierter
       Fallback; eigenes Leaderboard.
-- [ ] Deployment-Notizen (Dockerfile, statisches Hosting des WASM-Builds
-      getrennt vom API-Server, CORS).
+- [ ] Deployment-Notizen (Dockerfile für den API-Server; der WASM-Build wird
+      weiterhin über GitHub Pages ausgeliefert). Zu beachten: CORS muss die
+      Pages-Origin erlauben, und der API-Server braucht **HTTPS** — Pages
+      läuft auf HTTPS, Mixed Content zu einem HTTP-Server wird vom Browser
+      blockiert.
 
 **Done wenn:** Globaler Highscore funktioniert; mit gezogenem Netzwerkstecker
 verhält sich das Spiel exakt wie vorher.
