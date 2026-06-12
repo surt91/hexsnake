@@ -140,23 +140,11 @@ möglich (inkl. Auto-Pause beim offenen Dropdown), und der Seed erscheint
 **Done wenn:** Fünf+ Strategien wählbar, Overlay zeigt nachvollziehbar, was
 die KI „denkt".
 
-## Phase 6 — Neuronales Netz
+## Phase 6 — Skins, Mobile & Statistik
 
-- [ ] Sensor-Featurevektor in `snake-core` (6 Richtungsstrahlen: Distanz zu
-      Hindernis/Körper/Futter, + Richtung/Länge).
-- [ ] Mini-MLP (Forward-Pass pur in Rust, keine externen ML-Deps);
-      Gewichts-(De)Serialisierung in einem simplen, dokumentierten Format —
-      dasselbe Format nutzt später auch der Python-Export (Phase 9).
-- [ ] `snake-train`: Evolutionsstrategie/GA, Fitness = Score +
-      Überlebenszeit, parallelisiert (rayon), Checkpoints speichern.
-- [ ] Trainieren, bestes Netz + 2–3 Zwischen-Generationen als Assets
-      einbetten; Strategie „Neural Net (Gen X)" im Dropdown.
-- [ ] NN in den Benchmark aufnehmen.
-
-**Done wenn:** Das NN schlägt Greedy im Benchmark deutlich und ist im Browser
-wählbar.
-
-## Phase 7 — Skins, Mobile & Statistik
+*(War ursprünglich Phase 7; mit dem Neuronalen Netz getauscht, damit die
+rechenintensive Trainingsphase ganz ans Ende rückt — Entscheidung vom
+2026-06-13.)*
 
 *(Spezialfutter und Replay/Ghost wurden bewusst nach „Spätere
 Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
@@ -181,6 +169,8 @@ Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
       Band ab und setzt am gegenüberliegenden Rand fort. Naheliegende
       Kandidaten: **Naturalistisch** (Körperband, das zum Schwanz schmaler
       wird) und **Neon** (Glow-Linie).
+- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
+      unterscheiden sich auch über Form, nicht nur Farbe.
 - [ ] Fress-/Game-Over-Effekte (theme-übergreifend).
 - [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
 - [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
@@ -189,6 +179,40 @@ Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
 überleben einen Reload, Fress-/Game-Over-Effekte sind sichtbar, das Spiel
 ist per Touch auf einem Mobilgerät steuerbar und das Statistik-Panel zeigt
 plausible Werte.
+
+
+## Phase 7 — Neuronales Netz
+
+*(War ursprünglich Phase 6, jetzt nach den Skins. **Trainings-Politik**:
+Echte Trainingsläufe sind rechenintensiv und werden vom Nutzer auf einem
+stärkeren Rechner ausgeführt — bei der Implementierung läuft nur ein
+minimaler Smoke-Run zu Testzwecken. Für jede Strategie, die einen
+Trainingslauf braucht, gehört eine Anleitung nach
+`docs/training/<name>.md` (siehe Skill `/training-docs`): von der
+Installation der Abhängigkeiten über den konkreten Aufruf bis zu
+Hyperparameter-Wahl und Auswertung.)*
+
+- [ ] Sensor-Featurevektor in `snake-core` (6 Richtungsstrahlen: Distanz zu
+      Hindernis/Körper/Futter, + Richtung/Länge).
+- [ ] Mini-MLP (Forward-Pass pur in Rust, keine externen ML-Deps);
+      Gewichts-(De)Serialisierung in einem simplen, dokumentierten Format —
+      dasselbe Format nutzt später auch der Python-Export (Phase 9).
+- [ ] `snake-train`: Evolutionsstrategie/GA, Fitness = Score +
+      Überlebenszeit, parallelisiert (rayon), Checkpoints speichern.
+- [ ] **Smoke-Training** (klein, nur zur Verifikation der Pipeline) +
+      Mechanik zum Einbetten von Gewichts-Assets; Strategie
+      „Neural Net (Gen X)" im Dropdown, Gewichte austauschbar, sobald der
+      Nutzer den echten Lauf gemacht hat.
+- [ ] **Trainings-Anleitung** `docs/training/neural-net-ga.md` schreiben
+      (Skill `/training-docs`): Voraussetzungen, Befehle, Hyperparameter,
+      erwartete Laufzeit, Auswertung, Einbetten der Checkpoints.
+- [ ] NN in den Benchmark aufnehmen.
+
+**Done wenn:** Die Trainings-Pipeline läuft end-to-end (Smoke-Run), das
+Smoke-NN ist im Browser wählbar, und die Anleitung erlaubt es, den echten
+Trainingslauf ohne weitere Rückfragen auf einem anderen Rechner
+durchzuführen. (Das Kriterium „NN schlägt Greedy deutlich" wandert zum
+echten Trainingslauf des Nutzers.)
 
 ## Phase 8 — Optionaler Server
 
@@ -269,6 +293,10 @@ die im Benchmark gegeneinander antreten (vgl. Konzept §3.8).
       Observation für DQN/PPO, Vergleich gegen Sensorstrahlen.
 - [ ] Alle Verfahren als Dropdown-Einträge + Aufnahme in den
       Benchmark-Harness (Vergleichstabelle ⌀-Score/⌀-Überlebenszeit).
+- [ ] Für **jedes** Verfahren mit Trainingslauf eine Anleitung
+      `docs/training/<name>.md` (Skill `/training-docs`); der Agent führt
+      nur Smoke-Runs aus, echte Läufe macht der Nutzer auf stärkerer
+      Hardware.
 - [ ] Optional (anspruchsvollste Stufe): **AlphaZero-light** — Policy/Value-
       Netz ersetzt die Zufalls-Rollouts des Monte-Carlo-Lookahead, Training
       per Self-Play.

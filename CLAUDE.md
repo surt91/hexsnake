@@ -45,6 +45,12 @@ das Spiel muss **offline immer voll funktionieren**.
   Stolpersteine, Designentscheidungen, schöne Tests, Messergebnisse) wird
   laufend in `docs/blog_notes.md` festgehalten — siehe Skill `/blog-notes`.
   Spätestens beim Abschluss jeder Phase prüfen, ob Notizen fehlen.
+- **Training**: Echte Trainingsläufe (NN/GA, später NEAT/BC/DQN/PPO) führt
+  der Nutzer auf stärkerer Hardware aus — der Agent macht nur minimale
+  Smoke-Runs zur Pipeline-Verifikation. Für jede trainierbare Strategie
+  gibt es eine Anleitung in `docs/training/<name>.md` (Struktur und Regeln:
+  Skill `/training-docs`); sie wird im selben Commit gepflegt wie Änderungen
+  an Trainer-CLI oder Formaten.
 - `cargo fmt` ist verbindlich, Clippy-Warnungen werden behoben statt
   allowed (begründete Ausnahmen mit Kommentar).
 
