@@ -170,8 +170,16 @@ Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
       halbtransparente Outlines), **Naturalistisch** (Kopf mit Augen, die
       Richtung Futter blicken; zum Schwanz schmaler werdende Segmente,
       Apfel als Futter).
-- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
-      unterscheiden sich auch über Form, nicht nur Farbe.
+- [ ] **Pfad-Rendering („Schlängeln sichtbar")**: Mindestens ein Skin
+      zeichnet die Schlange als durchgehenden Körper von Kante zu Kante —
+      ein Band durch die Zellzentren mit abgerundeten Gelenken, sodass der
+      Verlauf der Windungen erkennbar bleibt und nicht nur, *welche* Felder
+      belegt sind (sonst sieht man bei langer Schlange v. a. ein gefülltes
+      Gitter). Dafür liefert die Render-Schicht je Segment die Ein-/
+      Austrittsrichtung (Vorgänger/Nachfolger); am Torus-Wrap bricht das
+      Band ab und setzt am gegenüberliegenden Rand fort. Naheliegende
+      Kandidaten: **Naturalistisch** (Körperband, das zum Schwanz schmaler
+      wird) und **Neon** (Glow-Linie).
 - [ ] Fress-/Game-Over-Effekte (theme-übergreifend).
 - [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
 - [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
