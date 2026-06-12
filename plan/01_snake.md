@@ -146,6 +146,17 @@ wählbar.
 - [ ] Verifikation: Client sendet Seed + Inputliste, Server re-simuliert mit
       `snake-core` (gleiche Crate ⇒ gleiches Verhalten) und akzeptiert nur
       konsistente Läufe.
+- [ ] **Härtung der öffentlichen Endpoints**:
+      - Body-Size-Limit (axum `DefaultBodyLimit`) und Eingabevalidierung
+        (Namenslänge, erlaubte Zeichen, plausible Feld-/Modus-Werte).
+      - Rate Limiting pro IP auf dem POST-Endpoint (z. B. `tower-governor`);
+        hinter Proxy/Tunnel die Client-IP aus `X-Forwarded-For` nehmen,
+        konfigurierbar.
+      - Re-Simulation deckeln: harte Obergrenze für Inputlistenlänge und
+        Tick-Zahl, Verifikation mit Concurrency-Limit (Semaphore), damit
+        teure Anfragen den Server nicht auslasten können.
+      - Tests: überlange Namen, überlange Inputlisten und inkonsistente
+        Läufe werden mit 4xx abgelehnt.
 - [ ] Client: `ehttp`-Anbindung mit Timeout; nicht erreichbar ⇒ stilles
       Fallback auf lokale Tabelle, ausstehende Läufe werden lokal gemerkt
       und später nachgereicht. UI zeigt lokale und globale Tabelle.
@@ -157,15 +168,29 @@ wählbar.
       die statischen Dateien aus (`tower-http` `ServeDir`) — damit ist das
       komplette Spiel inkl. Highscore-Server als ein Container hostbar.
       SQLite-Datei auf einem Volume (`/data`), Pfad per Env-Var.
+      Container gehärtet: läuft als Non-Root-User, Root-Filesystem
+      read-only (beschreibbar nur `/data`), keine zusätzlichen
+      Capabilities; Beispiel-`docker-compose.yml` mit diesen Optionen
+      beilegen.
 - [ ] Client-Konfiguration für beide Hosting-Varianten: API-Aufrufe gehen
       per Default an **relative URLs** (same-origin — deckt die Docker-
       Variante ohne CORS ab); für den GitHub-Pages-Build wird die
       Server-URL zur Buildzeit/per Konfiguration gesetzt. GitHub Pages
       bleibt das primäre Hosting.
-- [ ] Deployment-Notizen: Docker-Variante (Volume für SQLite, ein Port);
-      Pages-Variante: CORS muss die Pages-Origin erlauben, und der
-      API-Server braucht **HTTPS** — Pages läuft auf HTTPS, Mixed Content
-      zu einem HTTP-Server wird vom Browser blockiert.
+- [ ] Deployment-Notizen (`docs/deployment.md`) mit drei Varianten:
+      - **Docker auf VPS**: Volume für SQLite, Reverse Proxy (Caddy/Traefik)
+        für automatisches HTTPS.
+      - **Heimserver**: empfohlen via **Cloudflare Tunnel** (`cloudflared`
+        als Sidecar-Container — kein offener Port, Heim-IP bleibt verborgen,
+        funktioniert auch hinter DS-Lite/CGNAT). Falls doch Portforwarding:
+        nur 443 (+80) weiterleiten, Host in eigenes VLAN/DMZ isolieren,
+        SSH nie exponieren (Administration nur via LAN/VPN), automatische
+        Updates (unattended-upgrades, regelmäßige Image-Rebuilds), Backup
+        des SQLite-Volumes.
+      - **GitHub Pages + externer API-Server**: CORS muss die Pages-Origin
+        erlauben, und der API-Server braucht **HTTPS** — Pages läuft auf
+        HTTPS, Mixed Content zu einem HTTP-Server wird vom Browser
+        blockiert.
 
 **Done wenn:** Globaler Highscore funktioniert; mit gezogenem Netzwerkstecker
 verhält sich das Spiel exakt wie vorher.
