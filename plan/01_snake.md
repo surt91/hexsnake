@@ -125,7 +125,7 @@ möglich (inkl. Auto-Pause beim offenen Dropdown), und der Seed erscheint
 
 ## Phase 5 — Weitere Strategien
 
-- [ ] **Raumgreifer**: Flood-Fill-Bewertung pro Zug, Futter als Tiebreaker.
+- [x] **Raumgreifer**: Flood-Fill-Bewertung pro Zug, Futter als Tiebreaker.
 - [ ] **Hamilton-Fahrer**: Serpentinen-Hamilton-Zyklus konstruieren
       (Generator + Test, dass jeder Zyklus gültig ist); Test stellt sicher,
       dass **alle drei Presets kompatibel** sind. Shortcut-Logik entlang der

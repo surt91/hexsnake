@@ -1,15 +1,36 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use super::{doomed_move, safe_moves, Strategy};
-use crate::board::Board;
+use super::{cell_index, doomed_move, safe_moves, Strategy, StrategyDebug};
 use crate::coords::{Direction, Offset};
 use crate::game::{GameState, Status};
 
 /// A*-based planner: shortest safe path to the food, but only if the snake
 /// can still reach its own tail afterwards (then it can never be fully
 /// trapped). Otherwise it chases its tail and waits for a better chance.
-pub struct PathPlanner;
+#[derive(Default)]
+pub struct PathPlanner {
+    debug: StrategyDebug,
+}
+
+impl PathPlanner {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn remember_path(&mut self, state: &GameState, path: &[Direction]) {
+        self.debug.path.clear();
+        let board = state.board();
+        let mut at = state.head();
+        for &dir in path {
+            let Some(next) = board.neighbor(at, dir) else {
+                break;
+            };
+            self.debug.path.push(next);
+            at = next;
+        }
+    }
+}
 
 impl Strategy for PathPlanner {
     fn next_move(&mut self, state: &GameState) -> Direction {
@@ -17,6 +38,7 @@ impl Strategy for PathPlanner {
 
         if let Some(path) = astar(state, state.food(), &vacate) {
             if !path.is_empty() && survives_after(state, &path) {
+                self.remember_path(state, &path);
                 return path[0];
             }
         }
@@ -24,19 +46,21 @@ impl Strategy for PathPlanner {
         // No (safe) path to the food: follow the own tail to stall.
         if let Some(path) = astar(state, state.tail(), &vacate) {
             if let Some(&first) = path.first() {
+                self.remember_path(state, &path);
                 return first;
             }
         }
 
+        self.debug.path.clear();
         safe_moves(state)
             .first()
             .map(|(dir, _)| *dir)
             .unwrap_or_else(|| doomed_move(state))
     }
-}
 
-fn cell_index(board: &Board, cell: Offset) -> usize {
-    (cell.row * board.width + cell.col) as usize
+    fn debug(&self) -> Option<&StrategyDebug> {
+        Some(&self.debug)
+    }
 }
 
 /// Tick at which each cell becomes free, assuming the snake keeps moving

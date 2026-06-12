@@ -68,7 +68,7 @@ fn build_autopilot(choice: StrategyChoice, seed: u64) -> Option<Box<dyn Strategy
         StrategyChoice::Human => None,
         StrategyChoice::Chaos => Some(Box::new(ChaosWalker::new(seed))),
         StrategyChoice::Greedy => Some(Box::new(Greedy)),
-        StrategyChoice::Planner => Some(Box::new(PathPlanner)),
+        StrategyChoice::Planner => Some(Box::new(PathPlanner::new())),
     }
 }
 

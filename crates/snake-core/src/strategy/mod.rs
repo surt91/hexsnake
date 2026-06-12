@@ -4,17 +4,66 @@
 mod chaos;
 mod greedy;
 mod planner;
+mod space;
 
 pub use chaos::ChaosWalker;
 pub use greedy::Greedy;
 pub use planner::PathPlanner;
+pub use space::SpaceKeeper;
 
+use crate::board::Board;
 use crate::coords::{Direction, Offset};
 use crate::game::GameState;
+
+/// What a strategy "thought" during its last decision — input for the
+/// debug overlay. Strategies fill in whatever applies to them.
+#[derive(Debug, Clone, Default)]
+pub struct StrategyDebug {
+    /// Planned path cells in order, starting with the cell after the head.
+    pub path: Vec<Offset>,
+    /// Cells highlighted by the strategy (e.g. flood-fill reachable area).
+    pub heatmap: Vec<Offset>,
+    /// Evaluation per candidate direction (higher = better).
+    pub move_scores: Vec<(Direction, f64)>,
+}
 
 pub trait Strategy {
     /// Decide the next move for the current state. Called once per tick.
     fn next_move(&mut self, state: &GameState) -> Direction;
+
+    /// Visualization of the last decision, if the strategy provides one.
+    fn debug(&self) -> Option<&StrategyDebug> {
+        None
+    }
+}
+
+pub(crate) fn cell_index(board: &Board, cell: Offset) -> usize {
+    (cell.row * board.width + cell.col) as usize
+}
+
+/// Collect all free cells reachable from `from` (BFS in deterministic
+/// direction order). `from` itself may be occupied (a hypothetical head)
+/// and is not counted.
+pub(crate) fn flood_fill(state: &GameState, from: Offset, out: &mut Vec<Offset>) {
+    let board = state.board();
+    out.clear();
+    let mut visited = vec![false; board.num_cells()];
+    visited[cell_index(board, from)] = true;
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(from);
+    while let Some(cell) = queue.pop_front() {
+        for dir in Direction::ALL {
+            let Some(next) = board.neighbor(cell, dir) else {
+                continue;
+            };
+            let idx = cell_index(board, next);
+            if !visited[idx] && !state.occupies(next) {
+                visited[idx] = true;
+                out.push(next);
+                queue.push_back(next);
+            }
+        }
+    }
 }
 
 /// Moves that do not kill the snake this tick, in `Direction::ALL` order
@@ -117,7 +166,7 @@ mod tests {
         for boundary in [BoundaryMode::Walls, BoundaryMode::Periodic] {
             let mut state = GameState::new(config(boundary));
             let expected = state.board().distance(state.head(), state.food());
-            let mut planner = PathPlanner;
+            let mut planner = PathPlanner::new();
             let mut steps = 0;
             while state.score() == 0 && steps < 500 {
                 let dir = planner.next_move(&state);

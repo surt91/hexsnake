@@ -87,7 +87,12 @@ mod tests {
             max_ticks,
         );
         let greedy = run_series(&mut |_| Box::new(Greedy), base, games, max_ticks);
-        let planner = run_series(&mut |_| Box::new(PathPlanner), base, games, max_ticks);
+        let planner = run_series(
+            &mut |_| Box::new(PathPlanner::new()),
+            base,
+            games,
+            max_ticks,
+        );
 
         assert!(
             chaos.avg_score < greedy.avg_score,
@@ -100,6 +105,37 @@ mod tests {
             "greedy ({:.2}) should score below planner ({:.2})",
             greedy.avg_score,
             planner.avg_score
+        );
+    }
+
+    #[test]
+    fn space_keeper_survives_longer_than_chaos() {
+        use crate::strategy::SpaceKeeper;
+        let base = Config {
+            width: 16,
+            height: 12,
+            boundary: BoundaryMode::Walls,
+            seed: 0,
+        };
+        let games = 6;
+        let max_ticks = 3_000;
+        let chaos = run_series(
+            &mut |seed| Box::new(ChaosWalker::new(seed)),
+            base,
+            games,
+            max_ticks,
+        );
+        let space = run_series(
+            &mut |_| Box::new(SpaceKeeper::new()),
+            base,
+            games,
+            max_ticks,
+        );
+        assert!(
+            space.avg_ticks > 2.0 * chaos.avg_ticks,
+            "space keeper ({:.0} ticks) should clearly outlive chaos ({:.0} ticks)",
+            space.avg_ticks,
+            chaos.avg_ticks
         );
     }
 
@@ -119,7 +155,12 @@ mod tests {
             games,
             max_ticks,
         );
-        let planner = run_series(&mut |_| Box::new(PathPlanner), base, games, max_ticks);
+        let planner = run_series(
+            &mut |_| Box::new(PathPlanner::new()),
+            base,
+            games,
+            max_ticks,
+        );
         assert!(
             chaos.avg_score < planner.avg_score,
             "chaos ({:.2}) should score below planner ({:.2}) on the torus",

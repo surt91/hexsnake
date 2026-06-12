@@ -19,7 +19,7 @@ fn main() {
             Box::new(|seed| Box::new(ChaosWalker::new(seed))),
         ),
         ("Greedy", Box::new(|_| Box::new(Greedy))),
-        ("Pfadplaner", Box::new(|_| Box::new(PathPlanner))),
+        ("Pfadplaner", Box::new(|_| Box::new(PathPlanner::new()))),
     ];
 
     println!("{games} Partien je Strategie, max. {max_ticks} Ticks, Feld 16×12\n");
