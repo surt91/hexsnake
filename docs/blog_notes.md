@@ -175,3 +175,28 @@ dass man es Monate später noch versteht.
   egui muss man premultiplied-Werte vorrechnen, sonst kompiliert es nicht
   (oder man nimmt versehentlich premultiplied mit unmultiplied-Werten und
   bekommt grelles Türkis, so gefunden per Screenshot).
+
+## Phase 6 — Skins, Mobile & Statistik
+
+- **Theme = statische Daten, Renderer = ein Match**: Sechs Skins sind eine
+  Palette plus drei Stil-Enums (`SnakeStyle`, `FoodStyle`, `HeadMarker`);
+  der Renderer kennt keine Themes, nur diese Felder. Neue Skins sind
+  dadurch reine Datendefinitionen (`static NEON: Theme = …`).
+- **„Schlängeln sichtbar" über Gittervektoren**: Die Pixel-Verschiebung
+  eines Hex-Schritts ist paritätsunabhängig (reiner Gittervektor, Länge
+  √3·s für alle sechs Richtungen) — damit ist das Körperband trivial:
+  Kreise an den Zentren + dicke Linien je Segment. Am Torus-Wrap werden
+  statt einer Linie quer übers Brett zwei Stummel gezeichnet, die durch
+  die gemeinsame Kante austreten (halber Gittervektor) — gleiche Idee wie
+  der Linienabbruch im Debug-Overlay.
+- **Glow ohne Shader**: Drei Pässe desselben Bandes mit wachsender Breite
+  und sinkendem Alpha (`gamma_multiply`) ergeben einen brauchbaren
+  Neon-Effekt in egui — kein Postprocessing nötig.
+- **Augen, die zum Futter schauen**, sind im Screen-Space ein
+  Zweizeiler (normalisierter Blickvektor + Senkrechte), wirken aber
+  überproportional lebendig — der billigste „Charme-pro-Zeile"-Gewinn des
+  Projekts.
+- **Touch-Pad aus Gittervektoren**: Die sechs Richtungsknöpfe liegen auf
+  einem Ring — die Positionen sind exakt die sechs Hex-Gittervektoren,
+  wiederverwendet aus dem Band-Rendering. Eintritts-Bedingung
+  `any_touches()` hält das Pad von Desktop-Bildschirmen fern.

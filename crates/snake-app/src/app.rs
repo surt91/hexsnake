@@ -5,6 +5,7 @@ use crate::game_view::{GameSession, SessionEvent};
 use crate::highscores::{self, Entry, Highscores};
 use crate::seed::{encode_seed, parse_seed, random_seed};
 use crate::settings::{Settings, SizePreset, Speed, StrategyChoice, HAMILTON_INCOMPATIBLE_HINT};
+use crate::stats::Stats;
 use crate::theme::ThemeId;
 
 enum Screen {
@@ -27,6 +28,9 @@ pub struct App {
     /// Whether the highscore of the current game-over screen was already
     /// recorded (or did not qualify).
     highscore_done: bool,
+    stats: Stats,
+    /// Whether the current game's end was already counted in the stats.
+    stats_recorded: bool,
     /// One-shot focus grab for the name dialog. Re-requesting focus every
     /// frame would cancel the Enter-submits-the-field detection
     /// (`lost_focus` is false once focus is re-acquired).
@@ -35,11 +39,12 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let (settings, highscores, player_name) = match cc.storage {
+        let (settings, highscores, player_name, stats) = match cc.storage {
             Some(storage) => (
                 eframe::get_value(storage, "settings").unwrap_or_default(),
                 eframe::get_value(storage, "highscores").unwrap_or_default(),
                 eframe::get_value(storage, "player_name").unwrap_or_default(),
+                eframe::get_value(storage, "stats").unwrap_or_default(),
             ),
             None => Default::default(),
         };
@@ -51,6 +56,8 @@ impl App {
             highscores,
             player_name,
             highscore_done: false,
+            stats,
+            stats_recorded: false,
             name_focus_grabbed: false,
         }
     }
@@ -61,6 +68,7 @@ impl App {
 
     fn start_game(&mut self) {
         self.highscore_done = false;
+        self.stats_recorded = false;
         self.name_focus_grabbed = false;
         self.screen = Screen::Game(Box::new(GameSession::new(
             &self.settings,
@@ -178,6 +186,19 @@ impl App {
                 ui.add_space(4.0);
                 highscore_table(ui, entries);
             }
+
+            if self.stats.games > 0 {
+                ui.add_space(16.0);
+                ui.heading("Statistik");
+                ui.weak("Nur selbst gespielte Partien");
+                ui.label(format!(
+                    "Partien: {} — Ø Endlänge: {:.1} — Bester Score: {} — Längste Schlange: {}",
+                    self.stats.games,
+                    self.stats.avg_length(),
+                    self.stats.best_score,
+                    self.stats.best_length
+                ));
+            }
         });
         start
     }
@@ -270,6 +291,14 @@ impl eframe::App for App {
                     let state = session.game_state();
                     let finished = matches!(state.status(), Status::GameOver | Status::Won);
                     let score = state.score();
+                    if finished && !self.stats_recorded {
+                        // Stats count self-played games only, like the
+                        // highscores.
+                        if !session.autopilot_used() {
+                            self.stats.record(score, state.snake_len() as u32);
+                        }
+                        self.stats_recorded = true;
+                    }
                     // Runs are filed under the slowest speed used mid-game.
                     let key =
                         highscores::mode_key_with_speed(&self.settings, session.slowest_speed());
@@ -312,6 +341,7 @@ impl eframe::App for App {
         eframe::set_value(storage, "settings", &self.settings);
         eframe::set_value(storage, "highscores", &self.highscores);
         eframe::set_value(storage, "player_name", &self.player_name);
+        eframe::set_value(storage, "stats", &self.stats);
     }
 }
 

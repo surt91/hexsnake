@@ -172,8 +172,8 @@ Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
 - [x] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
       unterscheiden sich auch über Form, nicht nur Farbe.
 - [x] Fress-/Game-Over-Effekte (theme-übergreifend).
-- [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
-- [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
+- [x] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
+- [x] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
 
 **Done wenn:** Alle Skins inkl. Farbenblind-Theme sind wählbar und
 überleben einen Reload, Fress-/Game-Over-Effekte sind sichtbar, das Spiel

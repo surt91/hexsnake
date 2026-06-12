@@ -63,6 +63,8 @@ pub struct GameSession {
     /// True once the autopilot steered at least one tick — such runs are
     /// excluded from the highscores.
     autopilot_used: bool,
+    /// Virtual hex pad, shown once a touch event was seen.
+    touch_seen: bool,
     prev_score: u32,
     prev_status: Status,
     /// Eat effect: cell where food was eaten + egui start time.
@@ -115,6 +117,7 @@ impl GameSession {
             autopilot_on,
             overlay_on: false,
             autopilot_used: false,
+            touch_seen: false,
             prev_score: 0,
             prev_status: Status::Running,
             eat_effect: None,
@@ -154,7 +157,87 @@ impl GameSession {
         self.advance(ui);
         self.detect_effects(ui);
         self.draw(ui);
+        self.touch_pad(ui, lock_input);
         event
+    }
+
+    /// Virtual hex pad for touch devices: six direction buttons arranged
+    /// like the hex neighbors plus a central pause button. Appears after
+    /// the first touch event and is drawn on the foreground layer.
+    fn touch_pad(&mut self, ui: &mut Ui, lock_input: bool) {
+        if ui.ctx().input(|i| i.any_touches()) {
+            self.touch_seen = true;
+        }
+        if !self.touch_seen {
+            return;
+        }
+        let screen = ui.ctx().content_rect();
+        let center = screen.right_bottom() - Vec2::new(110.0, 120.0);
+        let ring = 62.0;
+        let button_r = 26.0;
+
+        let painter = ui.ctx().layer_painter(eframe::egui::LayerId::new(
+            eframe::egui::Order::Foreground,
+            eframe::egui::Id::new("touch_pad"),
+        ));
+
+        let pressed_at = ui.input(|i| {
+            (!lock_input && i.pointer.any_pressed())
+                .then(|| i.pointer.interact_pos())
+                .flatten()
+        });
+
+        // Center: pause toggle.
+        painter.circle(
+            center,
+            button_r * 0.7,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 18),
+            Stroke::new(1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
+        );
+        painter.text(
+            center,
+            Align2::CENTER_CENTER,
+            "⏸",
+            FontId::proportional(18.0),
+            Color32::from_rgba_unmultiplied(255, 255, 255, 160),
+        );
+        if let Some(pos) = pressed_at {
+            if pos.distance(center) <= button_r * 0.7 && self.state.status() == Status::Running {
+                self.paused = !self.paused;
+                self.next_tick = None;
+            }
+        }
+
+        for dir in Direction::ALL {
+            let pos = center + dir_vector(dir, ring / SQRT3);
+            painter.circle(
+                pos,
+                button_r,
+                Color32::from_rgba_unmultiplied(255, 255, 255, 18),
+                Stroke::new(1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
+            );
+            // Arrow: small triangle pointing outward.
+            let out = dir_vector(dir, 1.0).normalized();
+            let perp = Vec2::new(-out.y, out.x);
+            painter.add(Shape::convex_polygon(
+                vec![
+                    pos + out * 12.0,
+                    pos - out * 6.0 + perp * 8.0,
+                    pos - out * 6.0 - perp * 8.0,
+                ],
+                Color32::from_rgba_unmultiplied(255, 255, 255, 170),
+                PathStroke::NONE,
+            ));
+            if let Some(p) = pressed_at {
+                if p.distance(pos) <= button_r {
+                    if self.autopilot_on {
+                        self.autopilot_on = false;
+                        self.state.clear_input_queue();
+                    }
+                    self.state.push_input(dir);
+                }
+            }
+        }
     }
 
     /// Trigger the (theme-independent) eat and game-over effects on state
