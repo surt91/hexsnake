@@ -1,6 +1,6 @@
 //! The rectangular hex playing field with switchable boundary behavior.
 
-use crate::coords::{Axial, Direction, Offset};
+use crate::coords::{Direction, Offset};
 
 /// Behavior at the edge of the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

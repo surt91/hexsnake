@@ -19,20 +19,20 @@ vollständiges Offline-Spiel mit Autopilot.
 
 ## Phase 1 — Core: Hexgitter & Spiellogik (reine Logik, keine UI)
 
-- [ ] Koordinaten: axial `(q, r)` + Offset `(col, row)` mit Konvertierung;
+- [x] Koordinaten: axial `(q, r)` + Offset `(col, row)` mit Konvertierung;
       `Direction`-Enum (N, NE, SE, S, SW, NW) mit `opposite()` und
       `neighbor(coord, dir)`.
-- [ ] `BoundaryMode { Walls, Periodic }`: Nachbarberechnung wrappt auf dem
+- [x] `BoundaryMode { Walls, Periodic }`: Nachbarberechnung wrappt auf dem
       Offset-Rechteck (mod Breite/Höhe) bzw. liefert „Wand".
-- [ ] Hex-Distanz, bei `Periodic` als Torus-Distanz (Minimum über
+- [x] Hex-Distanz, bei `Periodic` als Torus-Distanz (Minimum über
       Wrap-Varianten) — wird von den Strategien gebraucht.
-- [ ] `GameState`: Schlange (VecDeque), Richtung, Futterposition, Score,
+- [x] `GameState`: Schlange (VecDeque), Richtung, Futterposition, Score,
       Tick-Zähler, seedbarer RNG (`Pcg32`).
-- [ ] `tick(&mut self, input: Option<Direction>)`: Richtungswechsel
+- [x] `tick(&mut self, input: Option<Direction>)`: Richtungswechsel
       (180°-Verbot), Bewegung, Fressen/Wachsen, Futter-Respawn auf freiem
       Feld, Kollisionserkennung → `GameOver`.
-- [ ] Input-Queue (2–3 gepufferte Richtungen) als Teil des Core.
-- [ ] **Tests**: Koordinaten-Roundtrips, Wrap-Verhalten an allen Rändern,
+- [x] Input-Queue (2–3 gepufferte Richtungen) als Teil des Core.
+- [x] **Tests**: Koordinaten-Roundtrips, Wrap-Verhalten an allen Rändern,
       Wachstum, Selbstbiss, 180°-Verbot, Determinismus (gleicher Seed +
       gleiche Inputs ⇒ identischer Verlauf).
 

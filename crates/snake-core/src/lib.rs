@@ -6,6 +6,8 @@
 
 mod board;
 mod coords;
+mod game;
 
 pub use board::{Board, BoundaryMode};
 pub use coords::{Axial, Direction, Offset};
+pub use game::{Config, GameState, Status};
