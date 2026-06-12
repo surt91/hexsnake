@@ -79,3 +79,26 @@ dass man es Monate später noch versteht.
 - **Randbedingung als Optik**: Wände = massiver Rahmen, Torus = gestrichelte
   Linie („durchlässig") — die Metapher trägt erstaunlich gut, ganz ohne
   Erklärtext.
+
+## Phase 3 — Lokale Highscores
+
+- **Die request_focus-Falle**: Ein Dialog-TextEdit, das sich bei „nichts
+  fokussiert" jeden Frame selbst den Fokus zurückholt, macht das kanonische
+  egui-Muster `lost_focus() && key_pressed(Enter)` unmöglich — beim Enter
+  gibt das Feld den Fokus ab, der Auto-Refocus holt ihn im selben Frame
+  zurück, und `lost_focus()` (definiert als „hatte Fokus letzten Frame,
+  hat ihn jetzt nicht") bleibt für immer false. Lösung: Fokus nur einmalig
+  beim Öffnen des Dialogs anfordern. Gefunden über eine
+  Playwright-Screenshot-Sequenz.
+- **Deterministische E2E-Tests dank `?inputs=`**: Seed *und* Inputliste als
+  URL-Parameter (ein Zeichen = ein Tick) machen Browser-Tests von UI-Flows
+  trivial: Ein 30-Zeichen-Skript (von einem Greedy-Generator in `snake-core`
+  erzeugt) spielt im Browser zuverlässig zu „Score 2, Game Over" — kein
+  fragiles zeitbasiertes Steuern per Tastatur-Events nötig.
+- **Datum ohne Datums-Crate**: Howard Hinnants `civil_from_days` sind ~15
+  Zeilen Integer-Arithmetik und ersetzen chrono komplett, wenn man nur
+  „YYYY-MM-DD aus Unix-Zeit" braucht — funktioniert identisch in nativ
+  (SystemTime) und WASM (js_sys::Date::now).
+- **eframe speichert im Browser nur alle 30 s** (auto_save_interval-Default)
+  — wer den Tab vorher schließt, verliert Highscores. Auf 5 s verkürzt;
+  der Reload-Test im Browser muss entsprechend warten.

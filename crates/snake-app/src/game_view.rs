@@ -45,10 +45,12 @@ pub struct GameSession {
     paused: bool,
     /// egui timestamp of the next due game tick.
     next_tick: Option<f64>,
+    /// Scripted inputs (debug feature), consumed one per tick.
+    script: std::collections::VecDeque<Direction>,
 }
 
 impl GameSession {
-    pub fn new(settings: &Settings, seed: u64) -> Self {
+    pub fn new(settings: &Settings, seed: u64, script: &[Direction]) -> Self {
         let (width, height) = settings.dimensions();
         let state = GameState::new(Config {
             width,
@@ -62,11 +64,27 @@ impl GameSession {
             ticks_per_second: settings.speed.ticks_per_second(),
             paused: false,
             next_tick: None,
+            script: script.iter().copied().collect(),
         }
     }
 
-    pub fn ui(&mut self, ui: &mut Ui) -> SessionEvent {
-        let event = self.handle_input(ui);
+    pub fn game_state(&self) -> &GameState {
+        &self.state
+    }
+
+    /// Speed multiplier: the game gets faster as the snake grows.
+    fn speed_multiplier(&self) -> f64 {
+        1.03f64.powi(self.state.score() as i32).min(2.5)
+    }
+
+    /// `lock_input` suppresses all game key handling, e.g. while the
+    /// highscore name dialog is open.
+    pub fn ui(&mut self, ui: &mut Ui, lock_input: bool) -> SessionEvent {
+        let event = if lock_input {
+            SessionEvent::Continue
+        } else {
+            self.handle_input(ui)
+        };
         self.advance(ui);
         self.draw(ui);
         event
@@ -100,11 +118,12 @@ impl GameSession {
         if self.paused || self.state.status() != Status::Running {
             return;
         }
-        let interval = 1.0 / self.ticks_per_second;
+        let interval = 1.0 / (self.ticks_per_second * self.speed_multiplier());
         let now = ui.input(|i| i.time);
         let next_tick = *self.next_tick.get_or_insert(now + interval);
         if now >= next_tick {
-            self.state.tick(None);
+            let scripted = self.script.pop_front();
+            self.state.tick(scripted);
             // Schedule relative to the due time to avoid drift, but never
             // accumulate a backlog (e.g. after the tab was hidden).
             self.next_tick = Some((next_tick + interval).max(now));
@@ -192,6 +211,8 @@ impl GameSession {
             ui.label(boundary);
             ui.separator();
             ui.label(format!("Seed: {}", self.seed));
+            ui.separator();
+            ui.label(format!("Tempo: ×{:.2}", self.speed_multiplier()));
             ui.with_layout(
                 eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
                 |ui| {

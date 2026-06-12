@@ -72,14 +72,14 @@ Randbedingungen funktionieren sichtbar korrekt, und das Spiel ist öffentlich
 
 ## Phase 3 — Highscore (lokal)
 
-- [ ] Score-Anzeige im Spiel; steigende Geschwindigkeit mit der Länge.
-- [ ] Lokale Highscore-Tabelle, **getrennt je Modus**
+- [x] Score-Anzeige im Spiel; steigende Geschwindigkeit mit der Länge.
+- [x] Lokale Highscore-Tabelle, **getrennt je Modus**
       (Randbedingung × Feldgröße × Geschwindigkeit), Top 10 mit Name + Datum.
       Frei gewählte Feldgrößen bekommen nur lokale Tabellen (global später
       nur Presets).
-- [ ] Persistenz über eframe-`Storage` (Browser: localStorage; nativ: Datei),
+- [x] Persistenz über eframe-`Storage` (Browser: localStorage; nativ: Datei),
       inkl. zuletzt gewählter Einstellungen.
-- [ ] Namenseingabe bei neuem Highscore.
+- [x] Namenseingabe bei neuem Highscore.
 
 **Done wenn:** Highscores überleben einen Browser-Reload.
 

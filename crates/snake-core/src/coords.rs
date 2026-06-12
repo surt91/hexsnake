@@ -7,6 +7,7 @@
 
 /// Axial hex coordinate (flat-top). `q` grows to the east, `r` to the south.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Axial {
     pub q: i32,
     pub r: i32,
@@ -14,6 +15,7 @@ pub struct Axial {
 
 /// Offset coordinate on the rectangular field ("odd-q" vertical layout).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Offset {
     pub col: i32,
     pub row: i32,
@@ -62,6 +64,7 @@ impl Offset {
 /// The six movement directions on a flat-top hex grid,
 /// mapped to the keys W, E, D, S, A, Q.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
     North,
     NorthEast,

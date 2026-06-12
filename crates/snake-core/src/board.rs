@@ -4,6 +4,7 @@ use crate::coords::{Direction, Offset};
 
 /// Behavior at the edge of the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BoundaryMode {
     /// Hitting the edge ends the game.
     Walls,

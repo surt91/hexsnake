@@ -4,6 +4,7 @@
 mod app;
 mod game_view;
 mod hex_layout;
+mod highscores;
 mod settings;
 
 pub use app::App;

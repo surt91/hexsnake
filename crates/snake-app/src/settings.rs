@@ -1,8 +1,9 @@
 //! Pre-game options chosen in the menu.
 
+use serde::{Deserialize, Serialize};
 use snake_core::BoundaryMode;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SizePreset {
     Small,
     Medium,
@@ -28,7 +29,7 @@ impl SizePreset {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Speed {
     Slow,
     Normal,
@@ -55,7 +56,7 @@ impl Speed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub boundary: BoundaryMode,
     pub preset: SizePreset,

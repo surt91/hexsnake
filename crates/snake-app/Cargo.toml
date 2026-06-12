@@ -5,9 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-snake-core = { path = "../snake-core" }
-eframe = "0.34"
+snake-core = { path = "../snake-core", features = ["serde"] }
+eframe = { version = "0.34", features = ["persistence"] }
 log = "0.4"
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
