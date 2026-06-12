@@ -170,7 +170,13 @@ Geordnet nach Aufwand/Nutzen; (★) = Empfehlung für die erste Ausbaustufe.
   **Daily Challenge** (alle spielen denselben Seed).
 - **Statistiken**: Spiele, ⌀-Länge, Bestwerte je Modus/Randbedingung.
 - **Achievements**: „Brett halb gefüllt", „10× über den Rand gewrappt", …
-- **Themes**: hell/dunkel, Farbschemata, dezente Animationen (Fress-Pulse).
+- **Themes/Skins** (★): nicht nur Farbpaletten, sondern Skins, die das
+  Aussehen von Schlange und Futter verändern — alles prozedural gezeichnet
+  (Theme = Daten + Zeichenstil, keine Sprites): Klassisch, Honigwabe
+  (naheliegend auf einem Hexgitter!), Retro-LCD, Neon mit Glow,
+  Naturalistisch (Kopf mit Augen, Apfel als Futter). Dazu eine
+  farbenblind-sichere Palette, bei der sich Objekte auch über die Form
+  unterscheiden. Dezente Animationen (Fress-Pulse, Blickrichtung).
 - **Touch-Steuerung**: virtuelles Hex-Pad für Mobilgeräte; alternativ Swipe
   in 6 Richtungen.
 - **Sound**: kurze Effekte (fressen, Game Over) via Web Audio, abschaltbar.

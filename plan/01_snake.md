@@ -133,7 +133,19 @@ wählbar.
       bleibt Default für Highscores).
 - [ ] Replay: Seed + Inputliste aufzeichnen, Replay-Player im UI,
       Ghost-Anzeige des besten eigenen Laufs.
-- [ ] Themes (hell/dunkel + 1–2 Farbschemata), Fress-/Game-Over-Effekte.
+- [ ] **Theme-/Skin-System**: Theme-Abstraktion als reine Daten + Zeichenstil
+      (Farben, Kopf-/Segment-Form, Futter-Darstellung) — kein Zugriff auf
+      die Spiellogik, prozedural gezeichnet (keine Sprite-Assets). Auswahl
+      im Menü, Wahl wird persistiert.
+- [ ] Skins umsetzen: **Klassisch** (cleane Geometrie), **Honigwabe**
+      (Wabenoptik, Raupe/Bienen, Honigtropfen als Futter), **Retro-LCD**
+      (monochromes Nokia-Grün), **Neon** (dunkler Grund, Glow via
+      halbtransparente Outlines), **Naturalistisch** (Kopf mit Augen, die
+      Richtung Futter blicken; zum Schwanz schmaler werdende Segmente,
+      Apfel als Futter).
+- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange, Futter
+      und Spezialfutter unterscheiden sich auch über Form, nicht nur Farbe.
+- [ ] Fress-/Game-Over-Effekte (theme-übergreifend).
 - [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
 - [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
 
@@ -230,6 +242,8 @@ Browser wählbar und der Benchmark zeigt eine Vergleichstabelle.
 - Multiplayer via WebSocket (server-autoritativ, 2–4 Schlangen).
 - KI-Battle-/Turniermodus im UI, Hindernis-Level, Portale, Achievements,
   Sound.
+- Freischaltbare Themes als Achievement-Belohnung (z. B. „Neon ab
+  50 Punkten auf Groß") — setzt das Achievement-System voraus.
 
 ## Risiken & Stolpersteine
 
