@@ -131,3 +131,23 @@ dass man es Monate später noch versteht.
   Gegenrichtung sein — das Spiel würde den Zug ignorieren und geradeaus
   weiterfahren. Leicht zu übersehen, weil es nur in Eck-Situationen
   auffällt.
+
+## Phase 4b — Bedienkomfort & Seed-Darstellung
+
+- **Eindeutigkeit von Base64-Seeds gratis durch ein freies Nibble**: Ein
+  32-Bit-Seed in 6 Base64-Zeichen belegt nur 32 von 36 Bits — die obersten
+  4 Bits der ersten 6-Bit-Gruppe sind immer 0, das erste Zeichen damit
+  immer `A`–`P`. Ein kodierter Seed kann also nie „nur aus Ziffern"
+  bestehen, eine Dezimalzahl immer — die Regel „nur Ziffern ⇒ dezimal,
+  sonst Base64" ist beweisbar kollisionsfrei, ganz ohne Präfix oder
+  Marker. (Per Unit-Test festgenagelt.)
+- **Auto-Pause bei offenem Dropdown** ist in egui ein Einzeiler: Die
+  `ComboBox`-`InnerResponse` hat `inner == Some(…)` genau dann, wenn das
+  Popup offen ist — daraus pro Frame ein `ui_paused`-Flag ableiten und im
+  Tick-Scheduler zusätzlich `next_tick` verwerfen (sonst spult das Spiel
+  die Pause nach dem Schließen nach). Verifiziert per zwei
+  Playwright-Screenshots im Abstand von 2 s: identische Schlangenposition.
+- **Highscore bei Tempowechsel: das langsamste Tempo zählt**. Erst war
+  geplant, solche Läufe komplett auszuschließen; die fairere Regel
+  (Wertung in der Tabelle des langsamsten verwendeten Tempos) ist genauso
+  einfach zu implementieren: ein `min()` über ein `Ord`-Enum pro Wechsel.

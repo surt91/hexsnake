@@ -5,6 +5,7 @@ mod app;
 mod game_view;
 mod hex_layout;
 mod highscores;
+mod seed;
 mod settings;
 
 pub use app::App;

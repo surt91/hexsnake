@@ -49,12 +49,19 @@ impl Highscores {
 /// Stable identifier of a game mode, used as table key
 /// (and later as API path segment for global leaderboards).
 pub fn mode_key(settings: &Settings) -> String {
+    mode_key_with_speed(settings, settings.speed)
+}
+
+/// Mode key with an explicit speed: a finished run is filed under the
+/// slowest speed used during the game, which may differ from the menu
+/// setting.
+pub fn mode_key_with_speed(settings: &Settings, speed: Speed) -> String {
     let boundary = match settings.boundary {
         BoundaryMode::Walls => "walls",
         BoundaryMode::Periodic => "torus",
     };
     let (width, height) = settings.dimensions();
-    let speed = match settings.speed {
+    let speed = match speed {
         Speed::Slow => "slow",
         Speed::Normal => "normal",
         Speed::Fast => "fast",
@@ -162,6 +169,17 @@ mod tests {
         assert_eq!(civil_from_days(19_723), (2024, 1, 1)); // leap year
         assert_eq!(civil_from_days(20_617), (2026, 6, 13));
         assert_eq!(civil_from_days(-1), (1969, 12, 31));
+    }
+
+    #[test]
+    fn mode_key_with_explicit_speed_overrides_settings_speed() {
+        let s = Settings {
+            speed: Speed::Fast,
+            ..Default::default()
+        };
+        assert!(mode_key(&s).ends_with("-fast"));
+        // A run that dropped to slow mid-game files under the slow table.
+        assert!(mode_key_with_speed(&s, Speed::Slow).ends_with("-slow"));
     }
 
     #[test]

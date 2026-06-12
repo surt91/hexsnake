@@ -3,6 +3,7 @@ use snake_core::{BoundaryMode, Direction, Status};
 
 use crate::game_view::{GameSession, SessionEvent};
 use crate::highscores::{self, Entry, Highscores};
+use crate::seed::{encode_seed, parse_seed, random_seed};
 use crate::settings::{Settings, SizePreset, Speed, StrategyChoice};
 
 enum Screen {
@@ -54,7 +55,7 @@ impl App {
     }
 
     fn next_seed(&self) -> u64 {
-        self.seed_override.unwrap_or_else(entropy_seed)
+        self.seed_override.unwrap_or_else(random_seed)
     }
 
     fn start_game(&mut self) {
@@ -138,7 +139,7 @@ impl App {
             ui.add_space(12.0);
             ui.weak("Steuerung: Q W E / A S D — sechs Richtungen auf dem Hexgitter");
             if let Some(seed) = self.seed_override {
-                ui.weak(format!("Seed fixiert: {seed}"));
+                ui.weak(format!("Seed fixiert: {}", encode_seed(seed)));
             }
 
             let key = highscores::mode_key(settings);
@@ -242,21 +243,22 @@ impl eframe::App for App {
                     let state = session.game_state();
                     let finished = matches!(state.status(), Status::GameOver | Status::Won);
                     let score = state.score();
-                    let key = highscores::mode_key(&self.settings);
+                    // Runs are filed under the slowest speed used mid-game.
+                    let key =
+                        highscores::mode_key_with_speed(&self.settings, session.slowest_speed());
                     // Autopilot runs are excluded from the highscores.
                     let dialog_open = finished
                         && !self.highscore_done
                         && !session.autopilot_used()
                         && self.highscores.qualifies(&key, score);
                     if finished {
-                        game_over_score = Some((score, dialog_open));
+                        game_over_score = Some((score, dialog_open, key));
                     }
                     session.ui(ui, dialog_open)
                 }
             };
 
-            if let Some((score, dialog_open)) = game_over_score {
-                let key = highscores::mode_key(&self.settings);
+            if let Some((score, dialog_open, key)) = game_over_score {
                 if dialog_open {
                     self.name_dialog(ui.ctx(), &key, score);
                 } else {
@@ -284,22 +286,6 @@ impl eframe::App for App {
         eframe::set_value(storage, "highscores", &self.highscores);
         eframe::set_value(storage, "player_name", &self.player_name);
     }
-}
-
-/// A non-deterministic seed for normal play. Wall-clock use is fine here in
-/// the app crate — only `snake-core` itself must stay clock-free.
-#[cfg(not(target_arch = "wasm32"))]
-fn entropy_seed() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-}
-
-#[cfg(target_arch = "wasm32")]
-fn entropy_seed() -> u64 {
-    eframe::web_sys::js_sys::Date::now() as u64
 }
 
 fn parse_input_script(script: &str) -> Vec<Direction> {
@@ -340,15 +326,16 @@ fn input_script_arg(_cc: &eframe::CreationContext<'_>) -> Option<String> {
     None
 }
 
-/// Fixed seed for reproducible runs: `?seed=42` in the browser URL,
-/// `--seed 42` (or `--seed=42`) on the command line.
+/// Fixed seed for reproducible runs: `?seed=42` or `?seed=AAAAAq` in the
+/// browser URL, `--seed 42` (or `--seed=…`) on the command line. Decimal
+/// and compact base64 forms are both accepted.
 #[cfg(target_arch = "wasm32")]
 fn seed_override(cc: &eframe::CreationContext<'_>) -> Option<u64> {
     let query_map = &cc.integration_info.web_info.location.query_map;
     query_map
         .get("seed")
         .and_then(|values| values.first())
-        .and_then(|v| v.parse().ok())
+        .and_then(|v| parse_seed(v))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -356,10 +343,10 @@ fn seed_override(_cc: &eframe::CreationContext<'_>) -> Option<u64> {
     let args: Vec<String> = std::env::args().collect();
     for (i, arg) in args.iter().enumerate() {
         if let Some(value) = arg.strip_prefix("--seed=") {
-            return value.parse().ok();
+            return parse_seed(value);
         }
         if arg == "--seed" {
-            return args.get(i + 1).and_then(|v| v.parse().ok());
+            return args.get(i + 1).and_then(|v| parse_seed(v));
         }
     }
     None

@@ -29,7 +29,8 @@ impl SizePreset {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Declaration order is the speed order: Slow < Normal < Fast.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Speed {
     Slow,
     Normal,

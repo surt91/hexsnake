@@ -100,17 +100,19 @@ Benchmark zeigt Chaos < Greedy < Pfadplaner.
 
 ## Phase 4b — Bedienkomfort & Seed-Darstellung (Nachtrag)
 
-- [ ] **In-Game-Steuerung per Maus**: Autopilot-Strategie während des
+- [x] **In-Game-Steuerung per Maus**: Autopilot-Strategie während des
       Spiels per Dropdown wechselbar (nicht nur an/aus via `T`), Tempo
       (Basisgeschwindigkeit) ebenfalls mitten im Spiel umstellbar — beides
       mausbedienbar im HUD. **Auto-Pause**, solange das Dropdown geöffnet
       ist (Aufklappen pausiert, Schließen setzt fort; eine manuell gesetzte
       Pause bleibt davon unberührt).
-- [ ] Tempo- oder Strategiewechsel während einer Partie schließt den Lauf
-      vom Highscore aus (gleiche Regel wie Autopilot-Nutzung) — die
-      Highscore-Tabellen sind an die Startgeschwindigkeit gebunden, ein
-      Wechsel mitten im Lauf würde sie verzerren.
-- [ ] **Kompakte Seeds**: Seeds auf 32 Bit reduzieren **und** URL-safe
+- [x] Tempowechsel während einer Partie: Der Lauf wird in der Tabelle des
+      **langsamsten verwendeten Tempos** gewertet — so bringt
+      zwischenzeitliches Hochschalten keinen Vorteil in einer schnelleren
+      Tabelle, und ein Lauf wird nie unfair entwertet. Die Autopilot-Regel
+      bleibt unverändert: Sobald der Autopilot mindestens einen Tick
+      gesteuert hat, ist der Lauf komplett vom Highscore ausgeschlossen.
+- [x] **Kompakte Seeds**: Seeds auf 32 Bit reduzieren **und** URL-safe
       Base64-kodiert darstellen (6 Zeichen statt bis zu 20
       Dezimalstellen). HUD und Menü zeigen nur noch die kompakte Form;
       `?seed=`/`--seed` akzeptiert beide Schreibweisen (dezimal und

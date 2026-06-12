@@ -3,14 +3,15 @@
 use std::time::Duration;
 
 use eframe::egui::{
-    epaint::PathStroke, Align2, Color32, CornerRadius, FontId, Key, Painter, Rect, Sense, Shape,
-    Stroke, StrokeKind, Ui,
+    epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Rect, Sense,
+    Shape, Stroke, StrokeKind, Ui,
 };
 use snake_core::strategy::{ChaosWalker, Greedy, PathPlanner};
 use snake_core::{BoundaryMode, Config, Direction, GameState, Status, Strategy};
 
 use crate::hex_layout::HexLayout;
-use crate::settings::{Settings, StrategyChoice};
+use crate::seed::encode_seed;
+use crate::settings::{Settings, Speed, StrategyChoice};
 
 const KEY_BINDINGS: [(Key, Direction); 6] = [
     (Key::W, Direction::North),
@@ -42,18 +43,33 @@ pub enum SessionEvent {
 pub struct GameSession {
     state: GameState,
     seed: u64,
-    ticks_per_second: f64,
+    speed: Speed,
+    /// Slowest base speed used at any point — highscores are filed under
+    /// this speed's table, so switching speeds mid-game can't game a
+    /// faster leaderboard.
+    slowest_speed: Speed,
     paused: bool,
+    /// Auto-pause while an in-game dropdown is open.
+    ui_paused: bool,
     /// egui timestamp of the next due game tick.
     next_tick: Option<f64>,
     /// Scripted inputs (debug feature), consumed one per tick.
     script: std::collections::VecDeque<Direction>,
+    strategy_choice: StrategyChoice,
     autopilot: Option<Box<dyn Strategy>>,
-    autopilot_label: &'static str,
     autopilot_on: bool,
     /// True once the autopilot steered at least one tick — such runs are
     /// excluded from the highscores.
     autopilot_used: bool,
+}
+
+fn build_autopilot(choice: StrategyChoice, seed: u64) -> Option<Box<dyn Strategy>> {
+    match choice {
+        StrategyChoice::Human => None,
+        StrategyChoice::Chaos => Some(Box::new(ChaosWalker::new(seed))),
+        StrategyChoice::Greedy => Some(Box::new(Greedy)),
+        StrategyChoice::Planner => Some(Box::new(PathPlanner)),
+    }
 }
 
 impl GameSession {
@@ -65,22 +81,19 @@ impl GameSession {
             boundary: settings.boundary,
             seed,
         });
-        let autopilot: Option<Box<dyn Strategy>> = match settings.strategy {
-            StrategyChoice::Human => None,
-            StrategyChoice::Chaos => Some(Box::new(ChaosWalker::new(seed))),
-            StrategyChoice::Greedy => Some(Box::new(Greedy)),
-            StrategyChoice::Planner => Some(Box::new(PathPlanner)),
-        };
+        let autopilot = build_autopilot(settings.strategy, seed);
         let autopilot_on = autopilot.is_some();
         Self {
             state,
             seed,
-            ticks_per_second: settings.speed.ticks_per_second(),
+            speed: settings.speed,
+            slowest_speed: settings.speed,
             paused: false,
+            ui_paused: false,
             next_tick: None,
             script: script.iter().copied().collect(),
+            strategy_choice: settings.strategy,
             autopilot,
-            autopilot_label: settings.strategy.label(),
             autopilot_on,
             autopilot_used: false,
         }
@@ -88,6 +101,11 @@ impl GameSession {
 
     pub fn autopilot_used(&self) -> bool {
         self.autopilot_used
+    }
+
+    /// The speed whose highscore table this run counts toward.
+    pub fn slowest_speed(&self) -> Speed {
+        self.slowest_speed
     }
 
     pub fn game_state(&self) -> &GameState {
@@ -102,6 +120,9 @@ impl GameSession {
     /// `lock_input` suppresses all game key handling, e.g. while the
     /// highscore name dialog is open.
     pub fn ui(&mut self, ui: &mut Ui, lock_input: bool) -> SessionEvent {
+        // The HUD comes first: it owns the in-game dropdowns, and an open
+        // dropdown auto-pauses the game for this frame.
+        self.hud(ui);
         let event = if lock_input {
             SessionEvent::Continue
         } else {
@@ -146,10 +167,14 @@ impl GameSession {
 
     /// Run game ticks on a fixed interval, decoupled from the frame rate.
     fn advance(&mut self, ui: &Ui) {
+        if self.ui_paused {
+            self.next_tick = None; // no catch-up after the dropdown closes
+            return;
+        }
         if self.paused || self.state.status() != Status::Running {
             return;
         }
-        let interval = 1.0 / (self.ticks_per_second * self.speed_multiplier());
+        let interval = 1.0 / (self.speed.ticks_per_second() * self.speed_multiplier());
         let now = ui.input(|i| i.time);
         let next_tick = *self.next_tick.get_or_insert(now + interval);
         if now >= next_tick {
@@ -176,8 +201,6 @@ impl GameSession {
     }
 
     fn draw(&self, ui: &mut Ui) {
-        self.hud(ui);
-
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), Sense::focusable_noninteractive());
         let rect = response.rect;
@@ -240,7 +263,8 @@ impl GameSession {
         }
     }
 
-    fn hud(&self, ui: &mut Ui) {
+    fn hud(&mut self, ui: &mut Ui) {
+        let mut dropdown_open = false;
         ui.horizontal(|ui| {
             ui.label(format!("Score: {}", self.state.score()));
             ui.separator();
@@ -252,24 +276,60 @@ impl GameSession {
             };
             ui.label(boundary);
             ui.separator();
-            ui.label(format!("Seed: {}", self.seed));
+            ui.label(format!("Seed: {}", encode_seed(self.seed)));
             ui.separator();
-            ui.label(format!("Tempo: ×{:.2}", self.speed_multiplier()));
+
+            ui.label("Tempo:");
+            let speed_combo = ComboBox::from_id_salt("hud_speed")
+                .selected_text(self.speed.label())
+                .show_ui(ui, |ui| {
+                    let mut speed = self.speed;
+                    for option in Speed::ALL {
+                        ui.selectable_value(&mut speed, option, option.label());
+                    }
+                    if speed != self.speed {
+                        self.speed = speed;
+                        self.slowest_speed = self.slowest_speed.min(speed);
+                        self.next_tick = None;
+                    }
+                });
+            dropdown_open |= speed_combo.inner.is_some();
+            ui.label(format!("×{:.2}", self.speed_multiplier()));
+            ui.separator();
+
+            ui.label("Autopilot:");
+            let strategy_combo = ComboBox::from_id_salt("hud_strategy")
+                .selected_text(self.strategy_choice.label())
+                .show_ui(ui, |ui| {
+                    let mut choice = self.strategy_choice;
+                    for option in StrategyChoice::ALL {
+                        ui.selectable_value(&mut choice, option, option.label());
+                    }
+                    if choice != self.strategy_choice {
+                        self.strategy_choice = choice;
+                        self.autopilot = build_autopilot(choice, self.seed);
+                        self.autopilot_on = self.autopilot.is_some();
+                        self.state.clear_input_queue();
+                    }
+                });
+            dropdown_open |= strategy_combo.inner.is_some();
             if self.autopilot.is_some() {
-                ui.separator();
                 let status = if self.autopilot_on { "an" } else { "aus" };
-                ui.label(format!(
-                    "Autopilot ({}): {status} [T]",
-                    self.autopilot_label
-                ));
+                ui.label(format!("{status} [T]"));
             }
-            ui.with_layout(
-                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
-                |ui| {
-                    ui.weak("QWEASD: Richtung — Space/P: Pause — Esc: Menü");
-                },
-            );
+
+            // The key hints are decoration: drop them before they would
+            // collide with the dropdowns on narrow windows.
+            if ui.available_width() > 380.0 {
+                ui.with_layout(
+                    eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                    |ui| {
+                        ui.weak("QWEASD: Richtung — Space/P: Pause — Esc: Menü");
+                    },
+                );
+            }
         });
+        self.ui_paused = dropdown_open;
     }
 
     /// Visualize the boundary mode: solid "wall" frame vs. a dashed, open
