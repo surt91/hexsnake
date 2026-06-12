@@ -1,0 +1,16 @@
+# Rust
+/target
+
+# trunk (WASM-Build-Ausgabe)
+dist/
+
+# Python (Phase 9)
+python/.venv/
+__pycache__/
+*.pyc
+
+# Editor/OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

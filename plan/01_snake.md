@@ -1,0 +1,200 @@
+# Plan 01 — HexSnake: Umsetzung
+
+Basiert auf [`docs/concept.md`](../docs/concept.md). Die Phasen sind so
+geschnitten, dass nach jeder Phase etwas Lauffähiges existiert. Server und
+NN-Training sind bewusst spät — die ersten fünf Phasen ergeben bereits ein
+vollständiges Offline-Spiel mit Autopilot.
+
+## Phase 0 — Projekt-Setup
+
+- [ ] Cargo-Workspace anlegen: `crates/snake-core`, `crates/snake-app`
+      (`snake-train`, `snake-server` folgen später).
+- [ ] `snake-app` als eframe-Template: läuft nativ (`cargo run`) und im
+      Browser (`trunk serve`, Target `wasm32-unknown-unknown`).
+- [ ] Tooling: `rustfmt`, `clippy`, `index.html` für trunk, README mit
+      Build-Anleitung.
+- [ ] `git init` + erster Commit.
+
+**Done wenn:** Ein leeres egui-Fenster läuft nativ und im Browser.
+
+## Phase 1 — Core: Hexgitter & Spiellogik (reine Logik, keine UI)
+
+- [ ] Koordinaten: axial `(q, r)` + Offset `(col, row)` mit Konvertierung;
+      `Direction`-Enum (N, NE, SE, S, SW, NW) mit `opposite()` und
+      `neighbor(coord, dir)`.
+- [ ] `BoundaryMode { Walls, Periodic }`: Nachbarberechnung wrappt auf dem
+      Offset-Rechteck (mod Breite/Höhe) bzw. liefert „Wand".
+- [ ] Hex-Distanz, bei `Periodic` als Torus-Distanz (Minimum über
+      Wrap-Varianten) — wird von den Strategien gebraucht.
+- [ ] `GameState`: Schlange (VecDeque), Richtung, Futterposition, Score,
+      Tick-Zähler, seedbarer RNG (`Pcg32`).
+- [ ] `tick(&mut self, input: Option<Direction>)`: Richtungswechsel
+      (180°-Verbot), Bewegung, Fressen/Wachsen, Futter-Respawn auf freiem
+      Feld, Kollisionserkennung → `GameOver`.
+- [ ] Input-Queue (2–3 gepufferte Richtungen) als Teil des Core.
+- [ ] **Tests**: Koordinaten-Roundtrips, Wrap-Verhalten an allen Rändern,
+      Wachstum, Selbstbiss, 180°-Verbot, Determinismus (gleicher Seed +
+      gleiche Inputs ⇒ identischer Verlauf).
+
+**Done wenn:** Eine Partie ist headless per Unit-Test von Start bis Game Over
+durchspielbar.
+
+## Phase 2 — Spielbares Frontend
+
+- [ ] Hex-Rendering mit egui-`Painter` (Flat-Top, Polygone aus
+      Offset-Koordinaten), Schlange/Kopf/Futter klar unterscheidbar.
+- [ ] Fester Game-Tick entkoppelt vom Frame
+      (`request_repaint_after`), QWEASD-Input → Input-Queue.
+- [ ] Spielzustände: Startmenü → läuft → Pause (`Space`/`P`) → Game Over →
+      Neustart.
+- [ ] Menü-Optionen: Randbedingung (Wände/Periodisch), Feldgröße als Preset
+      (Klein 16×12 / Mittel 24×18 / Groß 32×24, alle Hamilton-kompatibel)
+      oder frei wählbar, Startgeschwindigkeit.
+- [ ] Visuelles Feedback für periodischen Modus (z. B. Randmarkierung statt
+      Mauer-Optik).
+
+**Done wenn:** HexSnake ist im Browser mit QWEASD spielbar, beide
+Randbedingungen funktionieren sichtbar korrekt.
+
+## Phase 3 — Highscore (lokal)
+
+- [ ] Score-Anzeige im Spiel; steigende Geschwindigkeit mit der Länge.
+- [ ] Lokale Highscore-Tabelle, **getrennt je Modus**
+      (Randbedingung × Feldgröße × Geschwindigkeit), Top 10 mit Name + Datum.
+      Frei gewählte Feldgrößen bekommen nur lokale Tabellen (global später
+      nur Presets).
+- [ ] Persistenz über eframe-`Storage` (Browser: localStorage; nativ: Datei),
+      inkl. zuletzt gewählter Einstellungen.
+- [ ] Namenseingabe bei neuem Highscore.
+
+**Done wenn:** Highscores überleben einen Browser-Reload.
+
+## Phase 4 — Autopilot-Framework + erste Strategien
+
+- [ ] `Strategy`-Trait in `snake-core`; Autopilot im UI zuschaltbar
+      (Dropdown), jederzeit per Tastendruck an/aus (Mensch übernimmt).
+- [ ] **Chaos-Walker**: zufällig unter nicht sofort tödlichen Zügen.
+- [ ] **Greedy**: Hex-/Torus-Distanz zum Futter minimieren.
+- [ ] **Pfadplaner**: A* zum Futter + Survival-Check (Schwanz nach
+      simuliertem Pfad erreichbar?), sonst Tail-Chasing.
+- [ ] Benchmark-Harness in `snake-core` (headless, N Partien pro Strategie,
+      ⌀-Score/⌀-Überlebenszeit) — als Test/Beispiel-Binary.
+- [ ] Autopilot-Läufe werden vom Highscore ausgenommen (oder eigene Tabelle).
+
+**Done wenn:** Pfadplaner spielt sichtbar gute Partien in beiden Randmodi;
+Benchmark zeigt Chaos < Greedy < Pfadplaner.
+
+## Phase 5 — Weitere Strategien
+
+- [ ] **Raumgreifer**: Flood-Fill-Bewertung pro Zug, Futter als Tiebreaker.
+- [ ] **Hamilton-Fahrer**: Serpentinen-Hamilton-Zyklus konstruieren
+      (Generator + Test, dass jeder Zyklus gültig ist); Test stellt sicher,
+      dass **alle drei Presets kompatibel** sind. Shortcut-Logik entlang der
+      Zyklusordnung; bei frei gewählten, inkompatiblen Maßen wird die
+      Strategie ausgegraut (Tooltip erklärt warum).
+- [ ] **Monte-Carlo-Lookahead**: Rollouts mit Tick-Budget, Parameter
+      (N, Horizont) als Konstanten mit sinnvollen Defaults.
+- [ ] **Debug-Overlay**: A*-Pfad, Flood-Fill-Heatmap, MC-Bewertung je
+      Richtung einblendbar.
+
+**Done wenn:** Fünf+ Strategien wählbar, Overlay zeigt nachvollziehbar, was
+die KI „denkt".
+
+## Phase 6 — Neuronales Netz
+
+- [ ] Sensor-Featurevektor in `snake-core` (6 Richtungsstrahlen: Distanz zu
+      Hindernis/Körper/Futter, + Richtung/Länge).
+- [ ] Mini-MLP (Forward-Pass pur in Rust, keine externen ML-Deps);
+      Gewichts-(De)Serialisierung in einem simplen, dokumentierten Format —
+      dasselbe Format nutzt später auch der Python-Export (Phase 9).
+- [ ] `snake-train`: Evolutionsstrategie/GA, Fitness = Score +
+      Überlebenszeit, parallelisiert (rayon), Checkpoints speichern.
+- [ ] Trainieren, bestes Netz + 2–3 Zwischen-Generationen als Assets
+      einbetten; Strategie „Neural Net (Gen X)" im Dropdown.
+- [ ] NN in den Benchmark aufnehmen.
+
+**Done wenn:** Das NN schlägt Greedy im Benchmark deutlich und ist im Browser
+wählbar.
+
+## Phase 7 — Gimmicks, Welle 1
+
+- [ ] Spezialfutter: goldener Apfel (Timeout), fauler Apfel, Tempo-Frucht —
+      im Core inkl. Tests, dann UI; per Menü abschaltbar („Klassisch-Modus",
+      bleibt Default für Highscores).
+- [ ] Replay: Seed + Inputliste aufzeichnen, Replay-Player im UI,
+      Ghost-Anzeige des besten eigenen Laufs.
+- [ ] Themes (hell/dunkel + 1–2 Farbschemata), Fress-/Game-Over-Effekte.
+- [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
+- [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
+
+**Done wenn:** Klassisch- und Gimmick-Modus spielbar, Replays abspielbar.
+
+## Phase 8 — Optionaler Server
+
+- [ ] `snake-server`: axum, SQLite; Endpoints `GET/POST /highscores/{mode}`.
+      Globale Leaderboards nur für die drei Presets; Identität ist ein frei
+      wählbarer Name, das Submit-Schema enthält aber von Anfang an ein
+      **optionales Signaturfeld** (Keypair-Nachrüstung später ohne
+      Migration).
+- [ ] Verifikation: Client sendet Seed + Inputliste, Server re-simuliert mit
+      `snake-core` (gleiche Crate ⇒ gleiches Verhalten) und akzeptiert nur
+      konsistente Läufe.
+- [ ] Client: `ehttp`-Anbindung mit Timeout; nicht erreichbar ⇒ stilles
+      Fallback auf lokale Tabelle, ausstehende Läufe werden lokal gemerkt
+      und später nachgereicht. UI zeigt lokale und globale Tabelle.
+- [ ] Daily Challenge: Tagesseed vom Server, lokaler datumsbasierter
+      Fallback; eigenes Leaderboard.
+- [ ] Deployment-Notizen (Dockerfile, statisches Hosting des WASM-Builds
+      getrennt vom API-Server, CORS).
+
+**Done wenn:** Globaler Highscore funktioniert; mit gezogenem Netzwerkstecker
+verhält sich das Spiel exakt wie vorher.
+
+## Phase 9 — ML-Ausbaustufe: weitere Lernverfahren
+
+Ziel: ein Strategie-Dropdown mit GA/ES, NEAT, Behavior Cloning, DQN und PPO,
+die im Benchmark gegeneinander antreten (vgl. Konzept §3.8).
+
+- [ ] **NEAT** in `snake-train` (bleibt im Rust-Track, kein Gradient nötig);
+      optional **CMA-ES** als alternativer Optimierer für das bestehende MLP.
+- [ ] **PyO3-Bindings**: `snake-core` via maturin als Python-Modul
+      (Gym-artiges Env-Interface: `reset`/`step`/Observation), Python-Setup
+      unter `python/` (uv/venv, dokumentiert).
+- [ ] **Behavior Cloning**: Datensatz-Generator (Pfadplaner spielt headless,
+      loggt Zustand→Zug), Supervised Training in PyTorch, Export ins
+      Rust-Gewichtsformat.
+- [ ] **DQN und PPO** mit `stable-baselines3` gegen das PyO3-Env;
+      Reward-Shaping (Futter, Überleben, Freiraum) dokumentieren. Export der
+      Policy-Netze ins Rust-Gewichtsformat (Inferenz bleibt pur Rust/WASM).
+- [ ] Optional: **CNN-Input** (Brett als Gitter-Tensor) als alternative
+      Observation für DQN/PPO, Vergleich gegen Sensorstrahlen.
+- [ ] Alle Verfahren als Dropdown-Einträge + Aufnahme in den
+      Benchmark-Harness (Vergleichstabelle ⌀-Score/⌀-Überlebenszeit).
+- [ ] Optional (anspruchsvollste Stufe): **AlphaZero-light** — Policy/Value-
+      Netz ersetzt die Zufalls-Rollouts des Monte-Carlo-Lookahead, Training
+      per Self-Play.
+
+**Done wenn:** Mindestens GA/ES, Behavior Cloning, DQN und PPO sind im
+Browser wählbar und der Benchmark zeigt eine Vergleichstabelle.
+
+## Spätere Ausbaustufen (bewusst nicht geplant)
+
+- Multiplayer via WebSocket (server-autoritativ, 2–4 Schlangen).
+- KI-Battle-/Turniermodus im UI, Hindernis-Level, Portale, Achievements,
+  Sound.
+
+## Risiken & Stolpersteine
+
+- **Hex + Torus**: Wrap in Offset-Koordinaten ist einfach, aber
+  Distanz/Pfadsuche müssen konsequent die Torus-Metrik nutzen — früh testen
+  (Phase 1), sonst spielen die Strategien im periodischen Modus schlecht.
+- **Hamilton auf Hex**: Zyklus-Konstruktion hat Paritätsbedingungen an die
+  Feldmaße; deshalb Generator + Validierungstest statt Ad-hoc-Konstruktion.
+- **WASM-Budget**: Monte-Carlo und Flood-Fill pro Tick deckeln (Zeit-/
+  Simulationsbudget), damit auch schwache Geräte flüssig bleiben.
+- **Determinismus**: Keine HashMap-Iterationsreihenfolge oder Float-Akrobatik
+  im Core verwenden, sonst bricht die Server-Verifikation der Replays.
+- **Rust↔Python-Gewichtsformat** (Phase 9): Export/Import mit einem
+  Roundtrip-Test absichern (Python-Forward-Pass und Rust-Inferenz liefern
+  auf Testinputs identische Outputs), sonst schleichen sich stille
+  Transponierungs-/Layout-Fehler ein.
