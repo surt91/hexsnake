@@ -155,13 +155,11 @@ die KI „denkt".
 **Done wenn:** Das NN schlägt Greedy im Benchmark deutlich und ist im Browser
 wählbar.
 
-## Phase 7 — Gimmicks, Welle 1
+## Phase 7 — Skins, Mobile & Statistik
 
-- [ ] Spezialfutter: goldener Apfel (Timeout), fauler Apfel, Tempo-Frucht —
-      im Core inkl. Tests, dann UI; per Menü abschaltbar („Klassisch-Modus",
-      bleibt Default für Highscores).
-- [ ] Replay: Seed + Inputliste aufzeichnen, Replay-Player im UI,
-      Ghost-Anzeige des besten eigenen Laufs.
+*(Spezialfutter und Replay/Ghost wurden bewusst nach „Spätere
+Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
+
 - [ ] **Theme-/Skin-System**: Theme-Abstraktion als reine Daten + Zeichenstil
       (Farben, Kopf-/Segment-Form, Futter-Darstellung) — kein Zugriff auf
       die Spiellogik, prozedural gezeichnet (keine Sprite-Assets). Auswahl
@@ -172,13 +170,16 @@ wählbar.
       halbtransparente Outlines), **Naturalistisch** (Kopf mit Augen, die
       Richtung Futter blicken; zum Schwanz schmaler werdende Segmente,
       Apfel als Futter).
-- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange, Futter
-      und Spezialfutter unterscheiden sich auch über Form, nicht nur Farbe.
+- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
+      unterscheiden sich auch über Form, nicht nur Farbe.
 - [ ] Fress-/Game-Over-Effekte (theme-übergreifend).
 - [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
 - [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
 
-**Done wenn:** Klassisch- und Gimmick-Modus spielbar, Replays abspielbar.
+**Done wenn:** Alle Skins inkl. Farbenblind-Theme sind wählbar und
+überleben einen Reload, Fress-/Game-Over-Effekte sind sichtbar, das Spiel
+ist per Touch auf einem Mobilgerät steuerbar und das Statistik-Panel zeigt
+plausible Werte.
 
 ## Phase 8 — Optionaler Server
 
@@ -268,6 +269,16 @@ Browser wählbar und der Benchmark zeigt eine Vergleichstabelle.
 
 ## Spätere Ausbaustufen (bewusst nicht geplant)
 
+- **Spezialfutter**: goldener Apfel (Bonuspunkte, despawnt nach Timeout),
+  fauler Apfel, Tempo-Frucht — im Core inkl. Tests, dann UI; per Menü
+  abschaltbar („Klassisch-Modus", bleibt Default für Highscores). Die
+  Farbenblind-Anforderung (Unterscheidung über Form) gilt dann auch hier.
+  *(Aus Phase 7 verschoben, 2026-06-12.)*
+- **Replay & Ghost**: Seed + Inputliste aufzeichnen, Replay-Player im UI,
+  Ghost-Anzeige des besten eigenen Laufs. Hinweis: Die Aufzeichnung von
+  Seed + Inputliste selbst kommt unabhängig davon mit Phase 8 (Grundlage
+  der Server-Verifikation) — hier geht es nur um Player-UI und Ghost.
+  *(Aus Phase 7 verschoben, 2026-06-12.)*
 - Multiplayer via WebSocket (server-autoritativ, 2–4 Schlangen).
 - KI-Battle-/Turniermodus im UI, Hindernis-Level, Portale, Achievements,
   Sound.
