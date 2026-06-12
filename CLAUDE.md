@@ -41,6 +41,10 @@ das Spiel muss **offline immer voll funktionieren**.
   die Checks laufen lassen (siehe Skill `/check`).
 - Code, Bezeichner und Code-Kommentare auf Englisch; Nutzer-Dokumentation
   (`docs/`, `plan/`) auf Deutsch.
+- **Blog-Notizen**: Bemerkenswertes aus der Implementierung (Aha-Momente,
+  Stolpersteine, Designentscheidungen, schöne Tests, Messergebnisse) wird
+  laufend in `docs/blog_notes.md` festgehalten — siehe Skill `/blog-notes`.
+  Spätestens beim Abschluss jeder Phase prüfen, ob Notizen fehlen.
 - `cargo fmt` ist verbindlich, Clippy-Warnungen werden behoben statt
   allowed (begründete Ausnahmen mit Kommentar).
 
