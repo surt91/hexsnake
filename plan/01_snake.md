@@ -151,11 +151,21 @@ wählbar.
       und später nachgereicht. UI zeigt lokale und globale Tabelle.
 - [ ] Daily Challenge: Tagesseed vom Server, lokaler datumsbasierter
       Fallback; eigenes Leaderboard.
-- [ ] Deployment-Notizen (Dockerfile für den API-Server; der WASM-Build wird
-      weiterhin über GitHub Pages ausgeliefert). Zu beachten: CORS muss die
-      Pages-Origin erlauben, und der API-Server braucht **HTTPS** — Pages
-      läuft auf HTTPS, Mixed Content zu einem HTTP-Server wird vom Browser
-      blockiert.
+- [ ] **All-in-one-Dockerfile**: Multi-Stage-Build (Stage 1: trunk-Release-
+      Build des WASM-Frontends; Stage 2: cargo-Build des Servers; Runtime-
+      Stage: schlankes Image). Der axum-Server liefert neben der API auch
+      die statischen Dateien aus (`tower-http` `ServeDir`) — damit ist das
+      komplette Spiel inkl. Highscore-Server als ein Container hostbar.
+      SQLite-Datei auf einem Volume (`/data`), Pfad per Env-Var.
+- [ ] Client-Konfiguration für beide Hosting-Varianten: API-Aufrufe gehen
+      per Default an **relative URLs** (same-origin — deckt die Docker-
+      Variante ohne CORS ab); für den GitHub-Pages-Build wird die
+      Server-URL zur Buildzeit/per Konfiguration gesetzt. GitHub Pages
+      bleibt das primäre Hosting.
+- [ ] Deployment-Notizen: Docker-Variante (Volume für SQLite, ein Port);
+      Pages-Variante: CORS muss die Pages-Origin erlauben, und der
+      API-Server braucht **HTTPS** — Pages läuft auf HTTPS, Mixed Content
+      zu einem HTTP-Server wird vom Browser blockiert.
 
 **Done wenn:** Globaler Highscore funktioniert; mit gezogenem Netzwerkstecker
 verhält sich das Spiel exakt wie vorher.
