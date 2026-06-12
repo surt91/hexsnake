@@ -41,18 +41,18 @@ durchspielbar.
 
 ## Phase 2 — Spielbares Frontend
 
-- [ ] Hex-Rendering mit egui-`Painter` (Flat-Top, Polygone aus
+- [x] Hex-Rendering mit egui-`Painter` (Flat-Top, Polygone aus
       Offset-Koordinaten), Schlange/Kopf/Futter klar unterscheidbar.
-- [ ] Fester Game-Tick entkoppelt vom Frame
+- [x] Fester Game-Tick entkoppelt vom Frame
       (`request_repaint_after`), QWEASD-Input → Input-Queue.
-- [ ] Spielzustände: Startmenü → läuft → Pause (`Space`/`P`) → Game Over →
+- [x] Spielzustände: Startmenü → läuft → Pause (`Space`/`P`) → Game Over →
       Neustart.
-- [ ] Menü-Optionen: Randbedingung (Wände/Periodisch), Feldgröße als Preset
+- [x] Menü-Optionen: Randbedingung (Wände/Periodisch), Feldgröße als Preset
       (Klein 16×12 / Mittel 24×18 / Groß 32×24, alle Hamilton-kompatibel)
       oder frei wählbar, Startgeschwindigkeit.
-- [ ] Visuelles Feedback für periodischen Modus (z. B. Randmarkierung statt
+- [x] Visuelles Feedback für periodischen Modus (z. B. Randmarkierung statt
       Mauer-Optik).
-- [ ] Debug-Feature: Seed per URL-Parameter (`?seed=42`, im WASM-Build via
+- [x] Debug-Feature: Seed per URL-Parameter (`?seed=42`, im WASM-Build via
       Query-String, nativ via CLI-Arg) — macht Läufe reproduzierbar für
       Browser-Screenshots und Bug-Reports (vgl. Skill `/test-debug`).
 - [ ] **GitHub-Pages-Deployment**: GitHub-Actions-Workflow, der bei Push auf

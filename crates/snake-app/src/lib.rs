@@ -2,5 +2,8 @@
 //! (`wasm32-unknown-unknown` via trunk).
 
 mod app;
+mod game_view;
+mod hex_layout;
+mod settings;
 
 pub use app::App;

@@ -92,7 +92,7 @@ impl GameState {
     }
 
     /// Snake cells, head first.
-    pub fn snake(&self) -> impl Iterator<Item = Offset> + '_ {
+    pub fn snake(&self) -> impl DoubleEndedIterator<Item = Offset> + ExactSizeIterator + '_ {
         self.snake.iter().copied()
     }
 

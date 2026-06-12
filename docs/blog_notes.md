@@ -58,3 +58,24 @@ dass man es Monate später noch versteht.
   Greedy-Strategie aus Phase 4 — damit spielt der Unit-Test komplette
   Partien headless von Start bis Game Over und übt Fressen, Wachsen,
   Respawn und Kollision in einem Durchlauf.
+
+## Phase 2 — Spielbares Frontend
+
+- **Das 300×150-Pixel-Spiel**: eframe ≥0.34 übernimmt die Canvas-Größe aus
+  dem CSS — setzt man kein `width/height: 100%`, rendert das komplette Spiel
+  in die HTML-Default-Canvas-Größe von 300×150 px (überlappender Text,
+  Mini-UI). Ältere eframe-Templates ließen eframe das Canvas selbst
+  aufziehen; beim Upgrade ist das eine stille Falle. Gefunden per
+  Playwright-Screenshot, der das Symptom sofort sichtbar machte.
+- **UI-Verifikation per Headless-Browser**: trunk-Dev-Server + Playwright-
+  Skript (Canvas anklicken — sonst kommen Tastatur-Events nicht an! — dann
+  QWEASD senden, Screenshot). Der Beweis-Screenshot für den periodischen
+  Modus zeigt die Schlange mitten im Wrap: Kopf am unteren, Körper noch am
+  oberen Rand — besser kann man Torus-Topologie kaum illustrieren.
+- **Tick-Scheduling ohne Backlog**: Der nächste Tick wird relativ zur
+  Fälligkeit geplant (kein Drift), aber mit `max(now)` geklemmt — sonst
+  „spult" das Spiel nach einem versteckten Browser-Tab alle verpassten
+  Ticks im Schnelldurchlauf nach. Beim Pausieren wird der Timer verworfen.
+- **Randbedingung als Optik**: Wände = massiver Rahmen, Torus = gestrichelte
+  Linie („durchlässig") — die Metapher trägt erstaunlich gut, ganz ohne
+  Erklärtext.
