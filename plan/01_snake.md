@@ -126,11 +126,12 @@ möglich (inkl. Auto-Pause beim offenen Dropdown), und der Seed erscheint
 ## Phase 5 — Weitere Strategien
 
 - [x] **Raumgreifer**: Flood-Fill-Bewertung pro Zug, Futter als Tiebreaker.
-- [ ] **Hamilton-Fahrer**: Serpentinen-Hamilton-Zyklus konstruieren
+- [x] **Hamilton-Fahrer**: Serpentinen-Hamilton-Zyklus konstruieren
       (Generator + Test, dass jeder Zyklus gültig ist); Test stellt sicher,
       dass **alle drei Presets kompatibel** sind. Shortcut-Logik entlang der
       Zyklusordnung; bei frei gewählten, inkompatiblen Maßen wird die
       Strategie ausgegraut (Tooltip erklärt warum).
+      *(UI-Ausgrauen folgt im Overlay/Dropdown-Punkt dieser Phase.)*
 - [ ] **Monte-Carlo-Lookahead**: Rollouts mit Tick-Budget, Parameter
       (N, Horizont) als Konstanten mit sinnvollen Defaults.
 - [ ] **Debug-Overlay**: A*-Pfad, Flood-Fill-Heatmap, MC-Bewertung je

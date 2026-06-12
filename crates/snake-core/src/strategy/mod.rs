@@ -3,11 +3,13 @@
 
 mod chaos;
 mod greedy;
+mod hamilton;
 mod planner;
 mod space;
 
 pub use chaos::ChaosWalker;
 pub use greedy::Greedy;
+pub use hamilton::{serpentine_cycle, HamiltonRider};
 pub use planner::PathPlanner;
 pub use space::SpaceKeeper;
 
