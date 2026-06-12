@@ -52,6 +52,9 @@ durchspielbar.
       oder frei wählbar, Startgeschwindigkeit.
 - [ ] Visuelles Feedback für periodischen Modus (z. B. Randmarkierung statt
       Mauer-Optik).
+- [ ] Debug-Feature: Seed per URL-Parameter (`?seed=42`, im WASM-Build via
+      Query-String, nativ via CLI-Arg) — macht Läufe reproduzierbar für
+      Browser-Screenshots und Bug-Reports (vgl. Skill `/test-debug`).
 - [ ] **GitHub-Pages-Deployment**: GitHub-Actions-Workflow, der bei Push auf
       `main` den Release-Build erzeugt und veröffentlicht
       (`trunk build --release --public-url /hexsnake/` — der Repo-Name als
