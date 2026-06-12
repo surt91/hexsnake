@@ -38,14 +38,24 @@ impl Strategy for SpaceKeeper {
             sim.tick(Some(dir));
             flood_fill(&sim, sim.head(), &mut reachable);
             let space = reachable.len();
-            let food_dist = board.distance(sim.head(), sim.food());
+            // After a simulated eat, sim.food() is already the *respawned*
+            // food — measuring the distance to it would make the eating
+            // move lose every tiebreak. Eating counts as distance zero.
+            let food_dist = if sim.score() > state.score() {
+                0
+            } else {
+                board.distance(sim.head(), sim.food())
+            };
             self.debug.move_scores.push((dir, space as f64));
 
             let better = match best {
                 None => true,
-                // Maximize space; on equal space prefer smaller food
-                // distance; final tie falls to Direction::ALL order.
-                Some((_, s, d)) => space > s || (space == s && food_dist < d),
+                // Maximize space, but treat differences of one cell as a
+                // tie: eating always shrinks the free area by exactly one
+                // (the snake grows), and a strict comparison would make
+                // the survivalist refuse food forever. Within the
+                // tolerance the food distance decides.
+                Some((_, s, d)) => space > s + 1 || (space + 1 >= s && food_dist < d),
             };
             if better {
                 best = Some((dir, space, food_dist));

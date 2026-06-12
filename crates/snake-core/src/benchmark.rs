@@ -109,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn space_keeper_survives_longer_than_chaos() {
+    fn space_keeper_outlives_greedy_and_actually_eats() {
         use crate::strategy::SpaceKeeper;
         let base = Config {
             width: 16,
@@ -125,17 +125,29 @@ mod tests {
             games,
             max_ticks,
         );
+        let greedy = run_series(&mut |_| Box::new(Greedy), base, games, max_ticks);
         let space = run_series(
             &mut |_| Box::new(SpaceKeeper::new()),
             base,
             games,
             max_ticks,
         );
+        // The defensive identity: far longer-lived than the pure food
+        // chaser …
         assert!(
-            space.avg_ticks > 2.0 * chaos.avg_ticks,
-            "space keeper ({:.0} ticks) should clearly outlive chaos ({:.0} ticks)",
+            space.avg_ticks > 2.0 * greedy.avg_ticks,
+            "space keeper ({:.0} ticks) should clearly outlive greedy ({:.0} ticks)",
             space.avg_ticks,
-            chaos.avg_ticks
+            greedy.avg_ticks
+        );
+        // … while still eating. Regression guard: with a strict space
+        // comparison (eating always costs one cell) or a tiebreak against
+        // the respawned food, the space keeper starves at score 0.
+        assert!(
+            space.avg_score > chaos.avg_score,
+            "space keeper ({:.2}) must actually eat, more than chaos ({:.2})",
+            space.avg_score,
+            chaos.avg_score
         );
     }
 
