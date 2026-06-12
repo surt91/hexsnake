@@ -61,10 +61,8 @@ durchspielbar.
       Subpfad ist Pflicht, sonst laden WASM/JS-Assets nicht; Deployment via
       `actions/deploy-pages`, wasm32-Target + trunk im Workflow
       installieren/cachen).
-      *Hinweis: Workflow liegt bereit und der Release-Build ist lokal
-      verifiziert; es existiert aber noch kein GitHub-Remote — Repo anlegen,
-      `git remote add` + Push und Pages aktivieren (Source: GitHub Actions)
-      muss einmalig manuell passieren.*
+      *Deployment ist live: <https://surt91.github.io/hexsnake/>
+      (verifiziert 2026-06-13).*
 
 **Done wenn:** HexSnake ist im Browser mit QWEASD spielbar, beide
 Randbedingungen funktionieren sichtbar korrekt, und das Spiel ist öffentlich
