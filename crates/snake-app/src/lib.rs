@@ -7,5 +7,6 @@ mod hex_layout;
 mod highscores;
 mod seed;
 mod settings;
+mod theme;
 
 pub use app::App;

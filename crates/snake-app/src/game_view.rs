@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use eframe::egui::{
-    epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Rect, Sense,
-    Shape, Stroke, StrokeKind, Ui,
+    epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Pos2, Rect,
+    Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
 };
 use snake_core::strategy::{
     ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
@@ -14,6 +14,7 @@ use snake_core::{Board, BoundaryMode, Config, Direction, GameState, Status, Stra
 use crate::hex_layout::HexLayout;
 use crate::seed::encode_seed;
 use crate::settings::{Settings, Speed, StrategyChoice, HAMILTON_INCOMPATIBLE_HINT};
+use crate::theme::{FoodStyle, HeadMarker, SnakeStyle, Theme, ThemeId};
 
 const KEY_BINDINGS: [(Key, Direction); 6] = [
     (Key::W, Direction::North),
@@ -24,15 +25,8 @@ const KEY_BINDINGS: [(Key, Direction); 6] = [
     (Key::Q, Direction::NorthWest),
 ];
 
-const BACKGROUND: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
-const CELL_FILL: Color32 = Color32::from_rgb(0x24, 0x28, 0x2c);
-const CELL_BORDER: Color32 = Color32::from_rgb(0x33, 0x39, 0x40);
-const HEAD_COLOR: Color32 = Color32::from_rgb(0x9a, 0xe6, 0x3a);
-const BODY_COLOR: Color32 = Color32::from_rgb(0x3f, 0xa3, 0x4d);
-const BODY_TAIL_COLOR: Color32 = Color32::from_rgb(0x2a, 0x6e, 0x38);
-const FOOD_COLOR: Color32 = Color32::from_rgb(0xe6, 0x4d, 0x3a);
-const WALL_COLOR: Color32 = Color32::from_rgb(0x8a, 0x80, 0x70);
-const PERIODIC_COLOR: Color32 = Color32::from_rgb(0x3a, 0xc6, 0xe6);
+const SQRT3: f32 = 1.732_050_8;
+
 const OVERLAY_PATH_COLOR: Color32 = Color32::from_rgb(0xff, 0xa0, 0x20);
 // Premultiplied teal at ~11% alpha (0x3a, 0xc6, 0xe6 × 28/255).
 const OVERLAY_HEAT_COLOR: Color32 = Color32::from_rgba_premultiplied(6, 22, 25, 28);
@@ -61,6 +55,7 @@ pub struct GameSession {
     /// Scripted inputs (debug feature), consumed one per tick.
     script: std::collections::VecDeque<Direction>,
     strategy_choice: StrategyChoice,
+    theme: ThemeId,
     autopilot: Option<Box<dyn Strategy>>,
     autopilot_on: bool,
     /// Debug overlay (key O): shows what the autopilot "thinks".
@@ -68,7 +63,16 @@ pub struct GameSession {
     /// True once the autopilot steered at least one tick — such runs are
     /// excluded from the highscores.
     autopilot_used: bool,
+    prev_score: u32,
+    prev_status: Status,
+    /// Eat effect: cell where food was eaten + egui start time.
+    eat_effect: Option<(snake_core::Offset, f64)>,
+    /// Game-over pulse: egui start time.
+    game_over_effect: Option<f64>,
 }
+
+const EAT_EFFECT_SECS: f64 = 0.45;
+const GAME_OVER_EFFECT_SECS: f64 = 0.9;
 
 fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<Box<dyn Strategy>> {
     match choice {
@@ -106,10 +110,15 @@ impl GameSession {
             next_tick: None,
             script: script.iter().copied().collect(),
             strategy_choice: settings.strategy,
+            theme: settings.theme,
             autopilot,
             autopilot_on,
             overlay_on: false,
             autopilot_used: false,
+            prev_score: 0,
+            prev_status: Status::Running,
+            eat_effect: None,
+            game_over_effect: None,
         }
     }
 
@@ -143,8 +152,26 @@ impl GameSession {
             self.handle_input(ui)
         };
         self.advance(ui);
+        self.detect_effects(ui);
         self.draw(ui);
         event
+    }
+
+    /// Trigger the (theme-independent) eat and game-over effects on state
+    /// transitions.
+    fn detect_effects(&mut self, ui: &Ui) {
+        let now = ui.input(|i| i.time);
+        if self.state.score() > self.prev_score {
+            // The food was eaten on the cell the head now occupies.
+            self.eat_effect = Some((self.state.head(), now));
+        }
+        self.prev_score = self.state.score();
+
+        let status = self.state.status();
+        if status != Status::Running && self.prev_status == Status::Running {
+            self.game_over_effect = Some(now);
+        }
+        self.prev_status = status;
     }
 
     fn handle_input(&mut self, ui: &mut Ui) -> SessionEvent {
@@ -218,10 +245,11 @@ impl GameSession {
     }
 
     fn draw(&self, ui: &mut Ui) {
+        let theme = self.theme.theme();
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), Sense::focusable_noninteractive());
         let rect = response.rect;
-        painter.rect_filled(rect, 0.0, BACKGROUND);
+        painter.rect_filled(rect, 0.0, theme.background);
 
         let board = self.state.board();
         let layout = HexLayout::fit(rect.shrink(12.0), board);
@@ -229,35 +257,16 @@ impl GameSession {
         for cell in board.cells() {
             painter.add(Shape::convex_polygon(
                 layout.corners(cell, 1.0),
-                CELL_FILL,
-                PathStroke::new(1.0, CELL_BORDER),
+                theme.cell_fill,
+                PathStroke::new(theme.cell_border_width, theme.cell_border),
             ));
         }
 
-        self.draw_boundary(&painter, layout.bounds(board));
+        self.draw_boundary(&painter, theme, layout.bounds(board));
+        self.draw_food(&painter, theme, &layout);
+        self.draw_snake(&painter, theme, &layout);
 
-        // Food: a filled circle, clearly distinct from the hex snake.
-        painter.circle_filled(
-            layout.center(self.state.food()),
-            layout.size * 0.45,
-            FOOD_COLOR,
-        );
-
-        // Snake, tail first so the head ends up on top.
-        let len = self.state.snake_len().max(2);
-        for (i, cell) in self.state.snake().enumerate().rev() {
-            let (color, scale) = if i == 0 {
-                (HEAD_COLOR, 0.95)
-            } else {
-                let t = i as f32 / (len - 1) as f32;
-                (BODY_COLOR.lerp_to_gamma(BODY_TAIL_COLOR, t), 0.85)
-            };
-            painter.add(Shape::convex_polygon(
-                layout.corners(cell, scale),
-                color,
-                PathStroke::NONE,
-            ));
-        }
+        self.draw_effects(ui, &painter, theme, &layout);
 
         if self.overlay_on {
             self.draw_strategy_overlay(&painter, &layout);
@@ -407,14 +416,14 @@ impl GameSession {
 
     /// Visualize the boundary mode: solid "wall" frame vs. a dashed, open
     /// border for the periodic (torus) field.
-    fn draw_boundary(&self, painter: &Painter, bounds: Rect) {
+    fn draw_boundary(&self, painter: &Painter, theme: &Theme, bounds: Rect) {
         let bounds = bounds.expand(5.0);
         match self.state.board().boundary {
             BoundaryMode::Walls => {
                 painter.rect_stroke(
                     bounds,
                     CornerRadius::ZERO,
-                    Stroke::new(5.0, WALL_COLOR),
+                    Stroke::new(5.0, theme.wall),
                     StrokeKind::Outside,
                 );
             }
@@ -429,10 +438,242 @@ impl GameSession {
                 for edge in corners.windows(2) {
                     painter.add(Shape::dashed_line(
                         edge,
-                        Stroke::new(2.0, PERIODIC_COLOR),
+                        Stroke::new(2.0, theme.periodic),
                         8.0,
                         6.0,
                     ));
+                }
+            }
+        }
+    }
+
+    /// Expanding, fading rings on eating and on game over.
+    fn draw_effects(&self, ui: &Ui, painter: &Painter, theme: &Theme, layout: &HexLayout) {
+        let now = ui.input(|i| i.time);
+        let s = layout.size;
+        let mut animating = false;
+
+        if let Some((cell, start)) = self.eat_effect {
+            let t = ((now - start) / EAT_EFFECT_SECS) as f32;
+            if (0.0..1.0).contains(&t) {
+                let fade = 1.0 - t;
+                painter.circle_stroke(
+                    layout.center(cell),
+                    s * (0.5 + 1.4 * t),
+                    Stroke::new(
+                        (s * 0.14 * fade).max(1.0),
+                        theme.accent.gamma_multiply(fade),
+                    ),
+                );
+                animating = true;
+            }
+        }
+
+        if let Some(start) = self.game_over_effect {
+            let t = ((now - start) / GAME_OVER_EFFECT_SECS) as f32;
+            if (0.0..1.0).contains(&t) {
+                let head = layout.center(self.state.head());
+                for (delay, color) in [(0.0, theme.food), (0.25, theme.accent)] {
+                    let tt = ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0);
+                    if tt > 0.0 && tt < 1.0 {
+                        let fade = 1.0 - tt;
+                        painter.circle_stroke(
+                            head,
+                            s * (0.6 + 3.5 * tt),
+                            Stroke::new((s * 0.18 * fade).max(1.0), color.gamma_multiply(fade)),
+                        );
+                    }
+                }
+                animating = true;
+            }
+        }
+
+        if animating {
+            ui.ctx().request_repaint();
+        }
+    }
+
+    fn draw_food(&self, painter: &Painter, theme: &Theme, layout: &HexLayout) {
+        let c = layout.center(self.state.food());
+        let s = layout.size;
+        match theme.food_style {
+            FoodStyle::Circle => {
+                painter.circle_filled(c, s * 0.45, theme.food);
+            }
+            FoodStyle::Drop => {
+                painter.circle_filled(c + Vec2::new(0.0, 0.12 * s), s * 0.38, theme.food);
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        c + Vec2::new(-0.26 * s, -0.12 * s),
+                        c + Vec2::new(0.0, -0.72 * s),
+                        c + Vec2::new(0.26 * s, -0.12 * s),
+                    ],
+                    theme.food,
+                    PathStroke::NONE,
+                ));
+                painter.circle_filled(
+                    c + Vec2::new(-0.12 * s, 0.05 * s),
+                    s * 0.09,
+                    Color32::from_rgba_unmultiplied(255, 255, 255, 140),
+                );
+            }
+            FoodStyle::Ring => {
+                painter.circle_stroke(c, s * 0.38, Stroke::new(s * 0.16, theme.food));
+            }
+            FoodStyle::GlowOrb => {
+                painter.circle_filled(c, s * 0.85, theme.food.gamma_multiply(0.15));
+                painter.circle_filled(c, s * 0.55, theme.food.gamma_multiply(0.4));
+                painter.circle_filled(c, s * 0.32, theme.food);
+            }
+            FoodStyle::Apple => {
+                painter.circle_filled(c + Vec2::new(0.0, 0.08 * s), s * 0.42, theme.food);
+                painter.line_segment(
+                    [
+                        c + Vec2::new(0.0, -0.3 * s),
+                        c + Vec2::new(0.12 * s, -0.62 * s),
+                    ],
+                    Stroke::new(s * 0.08, Color32::from_rgb(0x6e, 0x4a, 0x2a)),
+                );
+                painter.circle_filled(
+                    c + Vec2::new(0.26 * s, -0.52 * s),
+                    s * 0.11,
+                    Color32::from_rgb(0x5d, 0x8a, 0x2e),
+                );
+            }
+            FoodStyle::Triangle => {
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        c + Vec2::new(0.0, -0.52 * s),
+                        c + Vec2::new(0.46 * s, 0.3 * s),
+                        c + Vec2::new(-0.46 * s, 0.3 * s),
+                    ],
+                    theme.food,
+                    PathStroke::NONE,
+                ));
+            }
+        }
+    }
+
+    fn draw_snake(&self, painter: &Painter, theme: &Theme, layout: &HexLayout) {
+        let board = self.state.board();
+        let cells: Vec<_> = self.state.snake().collect();
+        let centers: Vec<Pos2> = cells.iter().map(|c| layout.center(*c)).collect();
+        let n = cells.len();
+        let s = layout.size;
+        let blend = |i: usize| -> Color32 {
+            let t = i as f32 / (n.max(2) - 1) as f32;
+            theme.body.lerp_to_gamma(theme.tail, t)
+        };
+
+        match theme.snake_style {
+            SnakeStyle::Hexes => {
+                for i in (0..n).rev() {
+                    let (color, scale) = if i == 0 {
+                        (theme.head, 0.95)
+                    } else {
+                        (blend(i), 0.85)
+                    };
+                    painter.add(Shape::convex_polygon(
+                        layout.corners(cells[i], scale),
+                        color,
+                        PathStroke::NONE,
+                    ));
+                }
+            }
+            SnakeStyle::Band { taper, glow } => {
+                let width_at = |i: usize| -> f32 {
+                    let head_w = 0.66 * s;
+                    let tail_w = if taper { 0.2 * s } else { 0.66 * s };
+                    head_w + (tail_w - head_w) * (i as f32 / (n.max(2) - 1) as f32)
+                };
+                let passes: &[(f32, f32)] = if glow {
+                    &[(2.4, 0.12), (1.6, 0.3), (1.0, 1.0)]
+                } else {
+                    &[(1.0, 1.0)]
+                };
+                for &(mult, alpha) in passes {
+                    for i in (0..n).rev() {
+                        let color = if i == 0 { theme.head } else { blend(i) };
+                        let color = color.gamma_multiply(alpha);
+                        painter.circle_filled(centers[i], width_at(i) * 0.5 * mult, color);
+                        if i + 1 < n {
+                            let w = (width_at(i) + width_at(i + 1)) * 0.5 * mult;
+                            let stroke = Stroke::new(w, blend(i).gamma_multiply(alpha));
+                            self.band_segment(painter, board, layout, &cells, &centers, i, stroke);
+                        }
+                    }
+                }
+            }
+            SnakeStyle::Caterpillar => {
+                for i in (0..n).rev() {
+                    // Connector at the shared edge keeps the chain visually
+                    // linked, also across a torus wrap.
+                    if i + 1 < n {
+                        if let Some(dir) = direction_between(board, cells[i], cells[i + 1]) {
+                            let mid = centers[i] + dir_vector(dir, s) * 0.5;
+                            painter.circle_filled(mid, s * 0.28, blend(i));
+                        }
+                    }
+                    let (color, radius) = if i == 0 {
+                        (theme.head, 0.5 * s)
+                    } else {
+                        (blend(i), if i % 2 == 0 { 0.42 * s } else { 0.38 * s })
+                    };
+                    painter.circle_filled(centers[i], radius, color);
+                }
+            }
+        }
+
+        self.draw_head_marker(painter, theme, layout, centers[0]);
+    }
+
+    /// One body segment of the band. A torus wrap shows as two stubs that
+    /// exit/enter through the shared edge instead of a line across the
+    /// whole board.
+    #[allow(clippy::too_many_arguments)] // internal helper, plain data
+    fn band_segment(
+        &self,
+        painter: &Painter,
+        board: &snake_core::Board,
+        layout: &HexLayout,
+        cells: &[snake_core::Offset],
+        centers: &[Pos2],
+        i: usize,
+        stroke: Stroke,
+    ) {
+        let Some(dir) = direction_between(board, cells[i], cells[i + 1]) else {
+            return;
+        };
+        let step = dir_vector(dir, layout.size);
+        let direct = centers[i + 1] - centers[i];
+        if direct.length() <= 2.2 * layout.size {
+            painter.line_segment([centers[i], centers[i + 1]], stroke);
+        } else {
+            painter.line_segment([centers[i], centers[i] + step * 0.5], stroke);
+            painter.line_segment([centers[i + 1], centers[i + 1] - step * 0.5], stroke);
+        }
+    }
+
+    fn draw_head_marker(&self, painter: &Painter, theme: &Theme, layout: &HexLayout, head: Pos2) {
+        let s = layout.size;
+        match theme.head_marker {
+            HeadMarker::None => {}
+            HeadMarker::Ring => {
+                painter.circle_stroke(head, s * 0.55, Stroke::new(s * 0.1, Color32::WHITE));
+            }
+            HeadMarker::Eyes => {
+                let food = layout.center(self.state.food());
+                let gaze = (food - head).normalized();
+                let gaze = if gaze.length_sq() < 0.5 {
+                    dir_vector(self.state.direction(), 1.0).normalized()
+                } else {
+                    gaze
+                };
+                let perp = Vec2::new(-gaze.y, gaze.x);
+                for side in [-1.0, 1.0] {
+                    let eye = head + gaze * 0.2 * s + perp * 0.22 * s * side;
+                    painter.circle_filled(eye, s * 0.14, Color32::WHITE);
+                    painter.circle_filled(eye + gaze * 0.05 * s, s * 0.07, Color32::BLACK);
                 }
             }
         }
@@ -455,4 +696,29 @@ impl GameSession {
             Color32::from_gray(220),
         );
     }
+}
+
+/// Screen-space lattice vector for one hex step (parity-independent).
+fn dir_vector(dir: Direction, size: f32) -> Vec2 {
+    let (x, y) = match dir {
+        Direction::North => (0.0, -SQRT3),
+        Direction::NorthEast => (1.5, -SQRT3 / 2.0),
+        Direction::SouthEast => (1.5, SQRT3 / 2.0),
+        Direction::South => (0.0, SQRT3),
+        Direction::SouthWest => (-1.5, SQRT3 / 2.0),
+        Direction::NorthWest => (-1.5, -SQRT3 / 2.0),
+    };
+    Vec2::new(x, y) * size
+}
+
+/// The direction leading from `a` to `b`, if they are board neighbors
+/// (torus-aware).
+fn direction_between(
+    board: &snake_core::Board,
+    a: snake_core::Offset,
+    b: snake_core::Offset,
+) -> Option<Direction> {
+    Direction::ALL
+        .into_iter()
+        .find(|d| board.neighbor(a, *d) == Some(b))
 }

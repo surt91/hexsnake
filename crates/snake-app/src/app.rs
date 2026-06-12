@@ -5,6 +5,7 @@ use crate::game_view::{GameSession, SessionEvent};
 use crate::highscores::{self, Entry, Highscores};
 use crate::seed::{encode_seed, parse_seed, random_seed};
 use crate::settings::{Settings, SizePreset, Speed, StrategyChoice, HAMILTON_INCOMPATIBLE_HINT};
+use crate::theme::ThemeId;
 
 enum Screen {
     Menu,
@@ -143,6 +144,16 @@ impl App {
                     if !settings.strategy.compatible_with(width, height) {
                         settings.strategy = StrategyChoice::Human;
                     }
+                    ui.end_row();
+
+                    ui.label("Theme:");
+                    egui::ComboBox::from_id_salt("theme")
+                        .selected_text(settings.theme.label())
+                        .show_ui(ui, |ui| {
+                            for theme in ThemeId::ALL {
+                                ui.selectable_value(&mut settings.theme, theme, theme.label());
+                            }
+                        });
                     ui.end_row();
                 });
 

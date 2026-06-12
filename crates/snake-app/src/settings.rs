@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use snake_core::BoundaryMode;
 
+use crate::theme::ThemeId;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SizePreset {
     Small,
@@ -119,6 +121,9 @@ pub struct Settings {
     /// stored settings loadable.
     #[serde(default)]
     pub strategy: StrategyChoice,
+    /// Visual skin; pure rendering, no influence on the game logic.
+    #[serde(default)]
+    pub theme: ThemeId,
 }
 
 impl Default for Settings {
@@ -130,6 +135,7 @@ impl Default for Settings {
             custom_height: 15,
             speed: Speed::Normal,
             strategy: StrategyChoice::default(),
+            theme: ThemeId::default(),
         }
     }
 }
