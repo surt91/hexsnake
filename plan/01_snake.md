@@ -7,13 +7,13 @@ vollständiges Offline-Spiel mit Autopilot.
 
 ## Phase 0 — Projekt-Setup
 
-- [ ] Cargo-Workspace anlegen: `crates/snake-core`, `crates/snake-app`
+- [x] Cargo-Workspace anlegen: `crates/snake-core`, `crates/snake-app`
       (`snake-train`, `snake-server` folgen später).
-- [ ] `snake-app` als eframe-Template: läuft nativ (`cargo run`) und im
+- [x] `snake-app` als eframe-Template: läuft nativ (`cargo run`) und im
       Browser (`trunk serve`, Target `wasm32-unknown-unknown`).
-- [ ] Tooling: `rustfmt`, `clippy`, `index.html` für trunk, README mit
+- [x] Tooling: `rustfmt`, `clippy`, `index.html` für trunk, README mit
       Build-Anleitung.
-- [ ] `git init` + erster Commit.
+- [x] `git init` + erster Commit.
 
 **Done wenn:** Ein leeres egui-Fenster läuft nativ und im Browser.
 

@@ -1,0 +1,16 @@
+[package]
+name = "snake-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snake-core = { path = "../snake-core" }
+eframe = "0.34"
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
