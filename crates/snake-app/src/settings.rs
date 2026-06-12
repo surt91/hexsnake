@@ -64,14 +64,20 @@ pub enum StrategyChoice {
     Chaos,
     Greedy,
     Planner,
+    Space,
+    Hamilton,
+    MonteCarlo,
 }
 
 impl StrategyChoice {
-    pub const ALL: [StrategyChoice; 4] = [
+    pub const ALL: [StrategyChoice; 7] = [
         StrategyChoice::Human,
         StrategyChoice::Chaos,
         StrategyChoice::Greedy,
         StrategyChoice::Planner,
+        StrategyChoice::Space,
+        StrategyChoice::Hamilton,
+        StrategyChoice::MonteCarlo,
     ];
 
     pub fn label(self) -> &'static str {
@@ -80,9 +86,27 @@ impl StrategyChoice {
             StrategyChoice::Chaos => "Chaos-Walker",
             StrategyChoice::Greedy => "Greedy",
             StrategyChoice::Planner => "Pfadplaner",
+            StrategyChoice::Space => "Raumgreifer",
+            StrategyChoice::Hamilton => "Hamilton",
+            StrategyChoice::MonteCarlo => "Monte-Carlo",
+        }
+    }
+
+    /// Hamilton needs a board with an even height; everything else runs
+    /// everywhere.
+    pub fn compatible_with(self, width: i32, height: i32) -> bool {
+        match self {
+            StrategyChoice::Hamilton => {
+                snake_core::strategy::HamiltonRider::compatible(width, height)
+            }
+            _ => true,
         }
     }
 }
+
+/// Tooltip shown on the greyed-out Hamilton entry.
+pub const HAMILTON_INCOMPATIBLE_HINT: &str =
+    "Benötigt eine gerade Feldhöhe (und mind. 2×2) — sonst existiert der Serpentinen-Hamilton-Zyklus nicht.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {

@@ -6,12 +6,14 @@ use eframe::egui::{
     epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Rect, Sense,
     Shape, Stroke, StrokeKind, Ui,
 };
-use snake_core::strategy::{ChaosWalker, Greedy, PathPlanner};
-use snake_core::{BoundaryMode, Config, Direction, GameState, Status, Strategy};
+use snake_core::strategy::{
+    ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
+};
+use snake_core::{Board, BoundaryMode, Config, Direction, GameState, Status, Strategy};
 
 use crate::hex_layout::HexLayout;
 use crate::seed::encode_seed;
-use crate::settings::{Settings, Speed, StrategyChoice};
+use crate::settings::{Settings, Speed, StrategyChoice, HAMILTON_INCOMPATIBLE_HINT};
 
 const KEY_BINDINGS: [(Key, Direction); 6] = [
     (Key::W, Direction::North),
@@ -31,6 +33,9 @@ const BODY_TAIL_COLOR: Color32 = Color32::from_rgb(0x2a, 0x6e, 0x38);
 const FOOD_COLOR: Color32 = Color32::from_rgb(0xe6, 0x4d, 0x3a);
 const WALL_COLOR: Color32 = Color32::from_rgb(0x8a, 0x80, 0x70);
 const PERIODIC_COLOR: Color32 = Color32::from_rgb(0x3a, 0xc6, 0xe6);
+const OVERLAY_PATH_COLOR: Color32 = Color32::from_rgb(0xff, 0xa0, 0x20);
+// Premultiplied teal at ~11% alpha (0x3a, 0xc6, 0xe6 × 28/255).
+const OVERLAY_HEAT_COLOR: Color32 = Color32::from_rgba_premultiplied(6, 22, 25, 28);
 
 /// What the session wants the app to do next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,17 +63,25 @@ pub struct GameSession {
     strategy_choice: StrategyChoice,
     autopilot: Option<Box<dyn Strategy>>,
     autopilot_on: bool,
+    /// Debug overlay (key O): shows what the autopilot "thinks".
+    overlay_on: bool,
     /// True once the autopilot steered at least one tick — such runs are
     /// excluded from the highscores.
     autopilot_used: bool,
 }
 
-fn build_autopilot(choice: StrategyChoice, seed: u64) -> Option<Box<dyn Strategy>> {
+fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<Box<dyn Strategy>> {
     match choice {
         StrategyChoice::Human => None,
         StrategyChoice::Chaos => Some(Box::new(ChaosWalker::new(seed))),
         StrategyChoice::Greedy => Some(Box::new(Greedy)),
         StrategyChoice::Planner => Some(Box::new(PathPlanner::new())),
+        StrategyChoice::Space => Some(Box::new(SpaceKeeper::new())),
+        // None for incompatible board sizes — the UI greys the entry out.
+        StrategyChoice::Hamilton => {
+            HamiltonRider::new(board).map(|rider| Box::new(rider) as Box<dyn Strategy>)
+        }
+        StrategyChoice::MonteCarlo => Some(Box::new(MonteCarlo::new(seed))),
     }
 }
 
@@ -81,7 +94,7 @@ impl GameSession {
             boundary: settings.boundary,
             seed,
         });
-        let autopilot = build_autopilot(settings.strategy, seed);
+        let autopilot = build_autopilot(settings.strategy, seed, state.board());
         let autopilot_on = autopilot.is_some();
         Self {
             state,
@@ -95,6 +108,7 @@ impl GameSession {
             strategy_choice: settings.strategy,
             autopilot,
             autopilot_on,
+            overlay_on: false,
             autopilot_used: false,
         }
     }
@@ -149,6 +163,9 @@ impl GameSession {
             }
             if self.autopilot.is_some() && input.key_pressed(Key::T) {
                 self.autopilot_on = !self.autopilot_on;
+            }
+            if input.key_pressed(Key::O) {
+                self.overlay_on = !self.overlay_on;
             }
 
             if running && (input.key_pressed(Key::Space) || input.key_pressed(Key::P)) {
@@ -242,6 +259,10 @@ impl GameSession {
             ));
         }
 
+        if self.overlay_on {
+            self.draw_strategy_overlay(&painter, &layout);
+        }
+
         match self.state.status() {
             Status::Running if self.paused => {
                 self.overlay(&painter, rect, "Pause", "Space/P: weiter — Esc: Menü");
@@ -298,16 +319,25 @@ impl GameSession {
             ui.separator();
 
             ui.label("Autopilot:");
+            let board = *self.state.board();
             let strategy_combo = ComboBox::from_id_salt("hud_strategy")
                 .selected_text(self.strategy_choice.label())
                 .show_ui(ui, |ui| {
                     let mut choice = self.strategy_choice;
                     for option in StrategyChoice::ALL {
-                        ui.selectable_value(&mut choice, option, option.label());
+                        let enabled = option.compatible_with(board.width, board.height);
+                        let label =
+                            eframe::egui::Button::selectable(choice == option, option.label());
+                        let response = ui
+                            .add_enabled(enabled, label)
+                            .on_disabled_hover_text(HAMILTON_INCOMPATIBLE_HINT);
+                        if response.clicked() {
+                            choice = option;
+                        }
                     }
                     if choice != self.strategy_choice {
                         self.strategy_choice = choice;
-                        self.autopilot = build_autopilot(choice, self.seed);
+                        self.autopilot = build_autopilot(choice, self.seed, &board);
                         self.autopilot_on = self.autopilot.is_some();
                         self.state.clear_input_queue();
                     }
@@ -324,12 +354,55 @@ impl GameSession {
                 ui.with_layout(
                     eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
                     |ui| {
-                        ui.weak("QWEASD: Richtung — Space/P: Pause — Esc: Menü");
+                        ui.weak("QWEASD: Richtung — Space/P: Pause — O: Overlay — Esc: Menü");
                     },
                 );
             }
         });
         self.ui_paused = dropdown_open;
+    }
+
+    /// Draw what the autopilot "thinks": flood-fill heatmap, planned path
+    /// and per-direction scores (key O).
+    fn draw_strategy_overlay(&self, painter: &Painter, layout: &HexLayout) {
+        let Some(debug) = self.autopilot.as_ref().and_then(|a| a.debug()) else {
+            return;
+        };
+        let board = self.state.board();
+
+        for cell in &debug.heatmap {
+            painter.add(Shape::convex_polygon(
+                layout.corners(*cell, 0.92),
+                OVERLAY_HEAT_COLOR,
+                PathStroke::NONE,
+            ));
+        }
+
+        // Planned path as a line through the cell centers. On the torus a
+        // wrap shows up as a long jump on screen — break the line there.
+        let mut points = vec![layout.center(self.state.head())];
+        points.extend(debug.path.iter().map(|c| layout.center(*c)));
+        let max_segment = layout.size * 2.2;
+        for pair in points.windows(2) {
+            if (pair[1] - pair[0]).length() <= max_segment {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(3.0, OVERLAY_PATH_COLOR));
+            }
+        }
+        if let Some(last) = debug.path.last() {
+            painter.circle_filled(layout.center(*last), layout.size * 0.2, OVERLAY_PATH_COLOR);
+        }
+
+        for (dir, score) in &debug.move_scores {
+            if let Some(cell) = board.neighbor(self.state.head(), *dir) {
+                painter.text(
+                    layout.center(cell),
+                    Align2::CENTER_CENTER,
+                    format!("{score:.0}"),
+                    FontId::proportional((layout.size * 0.6).clamp(9.0, 16.0)),
+                    Color32::WHITE,
+                );
+            }
+        }
     }
 
     /// Visualize the boundary mode: solid "wall" frame vs. a dashed, open

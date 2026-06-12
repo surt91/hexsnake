@@ -4,7 +4,7 @@ use snake_core::{BoundaryMode, Direction, Status};
 use crate::game_view::{GameSession, SessionEvent};
 use crate::highscores::{self, Entry, Highscores};
 use crate::seed::{encode_seed, parse_seed, random_seed};
-use crate::settings::{Settings, SizePreset, Speed, StrategyChoice};
+use crate::settings::{Settings, SizePreset, Speed, StrategyChoice, HAMILTON_INCOMPATIBLE_HINT};
 
 enum Screen {
     Menu,
@@ -120,13 +120,29 @@ impl App {
                     ui.end_row();
 
                     ui.label("Autopilot:");
+                    let (width, height) = settings.dimensions();
                     egui::ComboBox::from_id_salt("strategy")
                         .selected_text(settings.strategy.label())
                         .show_ui(ui, |ui| {
                             for choice in StrategyChoice::ALL {
-                                ui.selectable_value(&mut settings.strategy, choice, choice.label());
+                                let enabled = choice.compatible_with(width, height);
+                                let label = egui::Button::selectable(
+                                    settings.strategy == choice,
+                                    choice.label(),
+                                );
+                                let response = ui
+                                    .add_enabled(enabled, label)
+                                    .on_disabled_hover_text(HAMILTON_INCOMPATIBLE_HINT);
+                                if response.clicked() {
+                                    settings.strategy = choice;
+                                }
                             }
                         });
+                    // A size change can strand an incompatible selection;
+                    // fall back to manual play.
+                    if !settings.strategy.compatible_with(width, height) {
+                        settings.strategy = StrategyChoice::Human;
+                    }
                     ui.end_row();
                 });
 

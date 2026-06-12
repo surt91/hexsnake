@@ -151,3 +151,27 @@ dass man es Monate später noch versteht.
   geplant, solche Läufe komplett auszuschließen; die fairere Regel
   (Wertung in der Tabelle des langsamsten verwendeten Tempos) ist genauso
   einfach zu implementieren: ein `min()` über ein `Ord`-Enum pro Wechsel.
+
+## Phase 5 — Weitere Strategien & Debug-Overlay
+
+- **Hamilton auf dem Hexgitter ist ein Geschenk des odd-q-Layouts**: In
+  Offset-Koordinaten existiert ein „horizontaler" Lauf bei konstanter Zeile
+  (abwechselnd SE-/NE-Schritte), und N/S bleiben in der Spalte — damit
+  funktioniert die klassische Quadratgitter-Serpentine (Spalte 0 als
+  Rückweg, Rest boustrophedon) eins zu eins auf Hexes. Einzige Bedingung:
+  gerade Zeilenzahl. Der Validierungstest (jede Zelle genau einmal, alle
+  Übergänge adjazent, Zyklus geschlossen) ist Pflicht — Paritätsfehler
+  sieht man sonst erst beim Spielen.
+- **Der Hamilton-Test schlug fehl, weil die Strategie *gewann***: Der Test
+  prüfte `status == Running` nach 8000 Ticks, aber der Fahrer hatte das
+  Brett komplett gefüllt (`Won`, Score 189 = Maximum auf 16×12). Der
+  Shortcut-Check über Vacate-Zeiten entlang der Zyklusordnung reicht also
+  für Perfect Games in beiden Randmodi.
+- **Eine `StrategyDebug`-Struktur statt Spezial-APIs**: Pfad, Heatmap und
+  Richtungs-Scores als gemeinsames Format, das jede Strategie nach Bedarf
+  füllt — das Overlay kennt keine Strategien, nur diese drei Felder.
+  Beim Hamilton-Fahrer wird daraus gratis eine Zyklus-Visualisierung.
+- **`from_rgba_unmultiplied` ist nicht `const`** — für Farbkonstanten in
+  egui muss man premultiplied-Werte vorrechnen, sonst kompiliert es nicht
+  (oder man nimmt versehentlich premultiplied mit unmultiplied-Werten und
+  bekommt grelles Türkis, so gefunden per Screenshot).

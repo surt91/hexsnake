@@ -134,8 +134,8 @@ möglich (inkl. Auto-Pause beim offenen Dropdown), und der Seed erscheint
       *(UI-Ausgrauen folgt im Overlay/Dropdown-Punkt dieser Phase.)*
 - [x] **Monte-Carlo-Lookahead**: Rollouts mit Tick-Budget, Parameter
       (N, Horizont) als Konstanten mit sinnvollen Defaults.
-- [ ] **Debug-Overlay**: A*-Pfad, Flood-Fill-Heatmap, MC-Bewertung je
-      Richtung einblendbar.
+- [x] **Debug-Overlay**: A*-Pfad, Flood-Fill-Heatmap, MC-Bewertung je
+      Richtung einblendbar (Taste `O`; zeigt auch den Hamilton-Zyklus).
 
 **Done wenn:** Fünf+ Strategien wählbar, Overlay zeigt nachvollziehbar, was
 die KI „denkt".
