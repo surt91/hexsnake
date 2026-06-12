@@ -8,6 +8,7 @@ pub mod benchmark;
 mod board;
 mod coords;
 mod game;
+pub mod nn;
 pub mod strategy;
 
 pub use board::{Board, BoundaryMode};
