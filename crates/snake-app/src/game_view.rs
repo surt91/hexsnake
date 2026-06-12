@@ -6,6 +6,7 @@ use eframe::egui::{
     epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Pos2, Rect,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
 };
+use snake_core::nn::NeuralNet;
 use snake_core::strategy::{
     ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
 };
@@ -88,6 +89,7 @@ fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<B
             HamiltonRider::new(board).map(|rider| Box::new(rider) as Box<dyn Strategy>)
         }
         StrategyChoice::MonteCarlo => Some(Box::new(MonteCarlo::new(seed))),
+        StrategyChoice::NeuralNet => Some(Box::new(NeuralNet::embedded())),
     }
 }
 

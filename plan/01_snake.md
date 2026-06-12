@@ -192,21 +192,21 @@ Trainingslauf braucht, gehört eine Anleitung nach
 Installation der Abhängigkeiten über den konkreten Aufruf bis zu
 Hyperparameter-Wahl und Auswertung.)*
 
-- [ ] Sensor-Featurevektor in `snake-core` (6 Richtungsstrahlen: Distanz zu
+- [x] Sensor-Featurevektor in `snake-core` (6 Richtungsstrahlen: Distanz zu
       Hindernis/Körper/Futter, + Richtung/Länge).
-- [ ] Mini-MLP (Forward-Pass pur in Rust, keine externen ML-Deps);
+- [x] Mini-MLP (Forward-Pass pur in Rust, keine externen ML-Deps);
       Gewichts-(De)Serialisierung in einem simplen, dokumentierten Format —
       dasselbe Format nutzt später auch der Python-Export (Phase 9).
-- [ ] `snake-train`: Evolutionsstrategie/GA, Fitness = Score +
+- [x] `snake-train`: Evolutionsstrategie/GA, Fitness = Score +
       Überlebenszeit, parallelisiert (rayon), Checkpoints speichern.
-- [ ] **Smoke-Training** (klein, nur zur Verifikation der Pipeline) +
+- [x] **Smoke-Training** (klein, nur zur Verifikation der Pipeline) +
       Mechanik zum Einbetten von Gewichts-Assets; Strategie
       „Neural Net (Gen X)" im Dropdown, Gewichte austauschbar, sobald der
       Nutzer den echten Lauf gemacht hat.
-- [ ] **Trainings-Anleitung** `docs/training/neural-net-ga.md` schreiben
+- [x] **Trainings-Anleitung** `docs/training/neural-net-ga.md` schreiben
       (Skill `/training-docs`): Voraussetzungen, Befehle, Hyperparameter,
       erwartete Laufzeit, Auswertung, Einbetten der Checkpoints.
-- [ ] NN in den Benchmark aufnehmen.
+- [x] NN in den Benchmark aufnehmen.
 
 **Done wenn:** Die Trainings-Pipeline läuft end-to-end (Smoke-Run), das
 Smoke-NN ist im Browser wählbar, und die Anleitung erlaubt es, den echten

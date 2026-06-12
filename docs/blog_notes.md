@@ -211,3 +211,33 @@ dass man es Monate später noch versteht.
   nächsten `request_repaint_after`-Termin — bei festem Game-Tick heißt das
   exakt **1 step = 1 tick**. Erst verwirrend (Spiel „zu schnell"), dann
   das perfekte Werkzeug: Tick-genaues Vorspulen ohne Zeitrechnerei.
+
+## Phase 7 — Neuronales Netz (GA/ES)
+
+- **Der Benchmark als Bug-Detektor**: Beim Aufnehmen des NN fiel auf,
+  dass der Raumgreifer in 20 Partien exakt 0,00 Punkte holte — er
+  verhungerte vor vollem Brett. Zwei gestapelte Ursachen: (1) Fressen
+  kostet immer genau eine Zelle Freiraum (die Schlange wächst), ein
+  strikter Flood-Fill-Vergleich meidet Futter also *systematisch*;
+  (2) der Futter-Tiebreaker maß die Distanz zum bereits respawnten
+  Futter — der Fress-Zug verlor damit jeden Tiebreak. Lehre: ⌀-Score
+  über viele Partien entlarvt Verhaltensfehler, die im Zuschauen
+  („überlebt doch ewig!") unsichtbar bleiben.
+- **Rotationsinvariante Features**: Die sechs Sensorstrahlen sind relativ
+  zur Blickrichtung indiziert (0 = geradeaus), die Netz-Outputs ebenso —
+  das Netz muss „links ist frei" nur einmal lernen statt sechsmal. Auf
+  dem Torus wrappt der Strahl und das einzige Hindernis, das er finden
+  kann, ist der eigene Körper von hinten (eigener Test).
+- **f32-Roundtrip gratis**: Rusts `{:?}`-Formatierung druckt die kürzeste
+  exakt round-trippende Dezimaldarstellung — das Textformat für Gewichte
+  braucht deshalb kein Binärformat, bleibt diffbar und ist trotzdem
+  bitgenau.
+- **Schon der Smoke-Run schlägt Greedy**: 120 Generationen, Population
+  48, ~1 Minute auf dem Laptop ⇒ ⌀ 37,4 (Walls 16×12) vs. Greedy 21,0.
+  Benchmark aller acht Strategien (20 Partien, max 5000 Ticks, Walls):
+  Chaos 2,1 < Greedy 21,0 < NN-Smoke 37,4 < Monte-Carlo 62,4 <
+  Pfadplaner 134,8 < Hamilton 180,4 (Torus sogar 189,0 = jede Partie
+  perfekt). Der echte Trainingslauf läuft später auf stärkerer Hardware
+  (`docs/training/neural-net-ga.md`).
+- **Box–Muller statt rand_distr**: Für Gauß-Mutation reichen zwei Zeilen
+  Box–Muller — eine Dependency weniger im Trainer.

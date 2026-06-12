@@ -1,0 +1,11 @@
+[package]
+name = "snake-train"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snake-core = { path = "../snake-core" }
+rand = { version = "0.9", default-features = false }
+rand_pcg = "0.9"
+rayon = "1.10"

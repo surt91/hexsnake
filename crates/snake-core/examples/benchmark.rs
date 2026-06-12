@@ -3,8 +3,11 @@
 //! Usage: cargo run --release -p snake-core --example benchmark [games] [max_ticks]
 
 use snake_core::benchmark::run_series;
-use snake_core::strategy::{ChaosWalker, Greedy, PathPlanner, Strategy};
-use snake_core::{BoundaryMode, Config};
+use snake_core::nn::NeuralNet;
+use snake_core::strategy::{
+    ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper, Strategy,
+};
+use snake_core::{Board, BoundaryMode, Config};
 
 type StrategyFactory = Box<dyn FnMut(u64) -> Box<dyn Strategy>>;
 
@@ -20,6 +23,21 @@ fn main() {
         ),
         ("Greedy", Box::new(|_| Box::new(Greedy))),
         ("Pfadplaner", Box::new(|_| Box::new(PathPlanner::new()))),
+        ("Raumgreifer", Box::new(|_| Box::new(SpaceKeeper::new()))),
+        (
+            "Hamilton",
+            Box::new(|_| {
+                Box::new(
+                    HamiltonRider::new(&Board::new(16, 12, BoundaryMode::Walls))
+                        .expect("16x12 is hamilton-compatible"),
+                )
+            }),
+        ),
+        (
+            "Monte-Carlo",
+            Box::new(|seed| Box::new(MonteCarlo::new(seed))),
+        ),
+        ("Neural Net", Box::new(|_| Box::new(NeuralNet::embedded()))),
     ];
 
     println!("{games} Partien je Strategie, max. {max_ticks} Ticks, Feld 16×12\n");
