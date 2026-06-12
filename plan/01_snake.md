@@ -85,15 +85,15 @@ Randbedingungen funktionieren sichtbar korrekt, und das Spiel ist öffentlich
 
 ## Phase 4 — Autopilot-Framework + erste Strategien
 
-- [ ] `Strategy`-Trait in `snake-core`; Autopilot im UI zuschaltbar
+- [x] `Strategy`-Trait in `snake-core`; Autopilot im UI zuschaltbar
       (Dropdown), jederzeit per Tastendruck an/aus (Mensch übernimmt).
-- [ ] **Chaos-Walker**: zufällig unter nicht sofort tödlichen Zügen.
-- [ ] **Greedy**: Hex-/Torus-Distanz zum Futter minimieren.
-- [ ] **Pfadplaner**: A* zum Futter + Survival-Check (Schwanz nach
+- [x] **Chaos-Walker**: zufällig unter nicht sofort tödlichen Zügen.
+- [x] **Greedy**: Hex-/Torus-Distanz zum Futter minimieren.
+- [x] **Pfadplaner**: A* zum Futter + Survival-Check (Schwanz nach
       simuliertem Pfad erreichbar?), sonst Tail-Chasing.
-- [ ] Benchmark-Harness in `snake-core` (headless, N Partien pro Strategie,
+- [x] Benchmark-Harness in `snake-core` (headless, N Partien pro Strategie,
       ⌀-Score/⌀-Überlebenszeit) — als Test/Beispiel-Binary.
-- [ ] Autopilot-Läufe werden vom Highscore ausgenommen (oder eigene Tabelle).
+- [x] Autopilot-Läufe werden vom Highscore ausgenommen (oder eigene Tabelle).
 
 **Done wenn:** Pfadplaner spielt sichtbar gute Partien in beiden Randmodi;
 Benchmark zeigt Chaos < Greedy < Pfadplaner.

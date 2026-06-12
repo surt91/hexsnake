@@ -102,3 +102,32 @@ dass man es Monate später noch versteht.
 - **eframe speichert im Browser nur alle 30 s** (auto_save_interval-Default)
   — wer den Tab vorher schließt, verliert Highscores. Auf 5 s verkürzt;
   der Reload-Test im Browser muss entsprechend warten.
+
+## Phase 4 — Autopilot & erste Strategien
+
+- **Zeitbewusstes A\***: Statt alle Schlangenzellen als Hindernis zu
+  blocken, bekommt jede Körperzelle eine „Frei-ab"-Zeit (Schwanz: Tick 1,
+  Kopf: Tick Länge). A* darf durch Zellen planen, die der Schwanz bis zur
+  Ankunft geräumt hat — deutlich stärkere Pfade als beim naiven Blocken,
+  ohne Mehraufwand (eine Vec-Indizierung statt HashSet-Lookup).
+- **Der Survival-Check ist eine echte Zukunftssimulation**: Weil das Spiel
+  deterministisch ist (Seed-RNG im GameState), ist `state.clone()` +
+  geplante Züge ticken nicht bloß eine Näherung, sondern exakt die
+  Zukunft — inklusive des Futter-Respawns. Der Determinismus, ursprünglich
+  für Replays/Server-Verifikation gebaut, fällt der KI gratis zu.
+- **Benchmark-Zahlen (16×12, 50 Partien, max 10k Ticks)**:
+  | Strategie | Walls ⌀ | Torus ⌀ |
+  |---|---|---|
+  | Chaos-Walker | 2,36 | 7,56 |
+  | Greedy | 23,40 | 32,96 |
+  | Pfadplaner | 144,76 | **188,02** |
+  Auf dem Torus ist 189 der Maximalscore (192 Zellen − Startlänge 3) — der
+  Pfadplaner füllt dort das Brett fast in jeder Partie *komplett* und
+  gewinnt. Ohne Wände gibt es schlicht weniger Sackgassen, und schon der
+  simple Tail-Chase-Fallback reicht zum Perfect Game.
+- **Auch der Zufalls-Walker profitiert vom Torus** (2,4 → 7,6): Wände sind
+  für alle Strategien der Haupttodesgrund.
+- **First-Step-Regel im A\***: Der erste Pfadschritt darf nie die
+  Gegenrichtung sein — das Spiel würde den Zug ignorieren und geradeaus
+  weiterfahren. Leicht zu übersehen, weil es nur in Eck-Situationen
+  auffällt.

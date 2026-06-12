@@ -56,6 +56,33 @@ impl Speed {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum StrategyChoice {
+    #[default]
+    Human,
+    Chaos,
+    Greedy,
+    Planner,
+}
+
+impl StrategyChoice {
+    pub const ALL: [StrategyChoice; 4] = [
+        StrategyChoice::Human,
+        StrategyChoice::Chaos,
+        StrategyChoice::Greedy,
+        StrategyChoice::Planner,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StrategyChoice::Human => "Aus (selbst spielen)",
+            StrategyChoice::Chaos => "Chaos-Walker",
+            StrategyChoice::Greedy => "Greedy",
+            StrategyChoice::Planner => "Pfadplaner",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub boundary: BoundaryMode,
@@ -63,6 +90,10 @@ pub struct Settings {
     pub custom_width: i32,
     pub custom_height: i32,
     pub speed: Speed,
+    /// Autopilot strategy; `Human` disables it. `serde(default)` keeps old
+    /// stored settings loadable.
+    #[serde(default)]
+    pub strategy: StrategyChoice,
 }
 
 impl Default for Settings {
@@ -73,6 +104,7 @@ impl Default for Settings {
             custom_width: 20,
             custom_height: 15,
             speed: Speed::Normal,
+            strategy: StrategyChoice::default(),
         }
     }
 }

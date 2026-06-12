@@ -6,10 +6,11 @@ use eframe::egui::{
     epaint::PathStroke, Align2, Color32, CornerRadius, FontId, Key, Painter, Rect, Sense, Shape,
     Stroke, StrokeKind, Ui,
 };
-use snake_core::{BoundaryMode, Config, Direction, GameState, Status};
+use snake_core::strategy::{ChaosWalker, Greedy, PathPlanner};
+use snake_core::{BoundaryMode, Config, Direction, GameState, Status, Strategy};
 
 use crate::hex_layout::HexLayout;
-use crate::settings::Settings;
+use crate::settings::{Settings, StrategyChoice};
 
 const KEY_BINDINGS: [(Key, Direction); 6] = [
     (Key::W, Direction::North),
@@ -47,6 +48,12 @@ pub struct GameSession {
     next_tick: Option<f64>,
     /// Scripted inputs (debug feature), consumed one per tick.
     script: std::collections::VecDeque<Direction>,
+    autopilot: Option<Box<dyn Strategy>>,
+    autopilot_label: &'static str,
+    autopilot_on: bool,
+    /// True once the autopilot steered at least one tick — such runs are
+    /// excluded from the highscores.
+    autopilot_used: bool,
 }
 
 impl GameSession {
@@ -58,6 +65,13 @@ impl GameSession {
             boundary: settings.boundary,
             seed,
         });
+        let autopilot: Option<Box<dyn Strategy>> = match settings.strategy {
+            StrategyChoice::Human => None,
+            StrategyChoice::Chaos => Some(Box::new(ChaosWalker::new(seed))),
+            StrategyChoice::Greedy => Some(Box::new(Greedy)),
+            StrategyChoice::Planner => Some(Box::new(PathPlanner)),
+        };
+        let autopilot_on = autopilot.is_some();
         Self {
             state,
             seed,
@@ -65,7 +79,15 @@ impl GameSession {
             paused: false,
             next_tick: None,
             script: script.iter().copied().collect(),
+            autopilot,
+            autopilot_label: settings.strategy.label(),
+            autopilot_on,
+            autopilot_used: false,
         }
+    }
+
+    pub fn autopilot_used(&self) -> bool {
+        self.autopilot_used
     }
 
     pub fn game_state(&self) -> &GameState {
@@ -95,8 +117,17 @@ impl GameSession {
         ui.input(|input| {
             for (key, dir) in KEY_BINDINGS {
                 if input.key_pressed(key) {
+                    // A manual steering input always hands control back to
+                    // the human.
+                    if self.autopilot_on {
+                        self.autopilot_on = false;
+                        self.state.clear_input_queue();
+                    }
                     self.state.push_input(dir);
                 }
+            }
+            if self.autopilot.is_some() && input.key_pressed(Key::T) {
+                self.autopilot_on = !self.autopilot_on;
             }
 
             if running && (input.key_pressed(Key::Space) || input.key_pressed(Key::P)) {
@@ -122,8 +153,19 @@ impl GameSession {
         let now = ui.input(|i| i.time);
         let next_tick = *self.next_tick.get_or_insert(now + interval);
         if now >= next_tick {
-            let scripted = self.script.pop_front();
-            self.state.tick(scripted);
+            let input = if self.autopilot_on {
+                if let Some(autopilot) = &mut self.autopilot {
+                    // Stale buffered inputs would override the strategy.
+                    self.state.clear_input_queue();
+                    self.autopilot_used = true;
+                    Some(autopilot.next_move(&self.state))
+                } else {
+                    None
+                }
+            } else {
+                self.script.pop_front()
+            };
+            self.state.tick(input);
             // Schedule relative to the due time to avoid drift, but never
             // accumulate a backlog (e.g. after the tab was hidden).
             self.next_tick = Some((next_tick + interval).max(now));
@@ -213,6 +255,14 @@ impl GameSession {
             ui.label(format!("Seed: {}", self.seed));
             ui.separator();
             ui.label(format!("Tempo: ×{:.2}", self.speed_multiplier()));
+            if self.autopilot.is_some() {
+                ui.separator();
+                let status = if self.autopilot_on { "an" } else { "aus" };
+                ui.label(format!(
+                    "Autopilot ({}): {status} [T]",
+                    self.autopilot_label
+                ));
+            }
             ui.with_layout(
                 eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
                 |ui| {

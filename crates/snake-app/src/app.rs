@@ -3,11 +3,11 @@ use snake_core::{BoundaryMode, Direction, Status};
 
 use crate::game_view::{GameSession, SessionEvent};
 use crate::highscores::{self, Entry, Highscores};
-use crate::settings::{Settings, SizePreset, Speed};
+use crate::settings::{Settings, SizePreset, Speed, StrategyChoice};
 
 enum Screen {
     Menu,
-    Game(GameSession),
+    Game(Box<GameSession>),
 }
 
 /// Top-level eframe application: menu ↔ running game.
@@ -60,11 +60,11 @@ impl App {
     fn start_game(&mut self) {
         self.highscore_done = false;
         self.name_focus_grabbed = false;
-        self.screen = Screen::Game(GameSession::new(
+        self.screen = Screen::Game(Box::new(GameSession::new(
             &self.settings,
             self.next_seed(),
             &self.input_script,
-        ));
+        )));
     }
 
     fn menu_ui(&mut self, ui: &mut egui::Ui) -> bool {
@@ -116,6 +116,16 @@ impl App {
                             ui.selectable_value(&mut settings.speed, speed, speed.label());
                         }
                     });
+                    ui.end_row();
+
+                    ui.label("Autopilot:");
+                    egui::ComboBox::from_id_salt("strategy")
+                        .selected_text(settings.strategy.label())
+                        .show_ui(ui, |ui| {
+                            for choice in StrategyChoice::ALL {
+                                ui.selectable_value(&mut settings.strategy, choice, choice.label());
+                            }
+                        });
                     ui.end_row();
                 });
 
@@ -233,8 +243,11 @@ impl eframe::App for App {
                     let finished = matches!(state.status(), Status::GameOver | Status::Won);
                     let score = state.score();
                     let key = highscores::mode_key(&self.settings);
-                    let dialog_open =
-                        finished && !self.highscore_done && self.highscores.qualifies(&key, score);
+                    // Autopilot runs are excluded from the highscores.
+                    let dialog_open = finished
+                        && !self.highscore_done
+                        && !session.autopilot_used()
+                        && self.highscores.qualifies(&key, score);
                     if finished {
                         game_over_score = Some((score, dialog_open));
                     }

@@ -143,6 +143,12 @@ impl GameState {
         }
     }
 
+    /// Drop all buffered inputs, e.g. when the autopilot takes over or
+    /// before simulating a planned path.
+    pub fn clear_input_queue(&mut self) {
+        self.input_queue.clear();
+    }
+
     /// Advance the game by one tick. `input` (if any) is pushed onto the
     /// input queue first, equivalent to calling [`Self::push_input`].
     ///
