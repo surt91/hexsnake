@@ -345,7 +345,7 @@ impl eframe::App for App {
     }
 }
 
-fn parse_input_script(script: &str) -> Vec<Direction> {
+pub(crate) fn parse_input_script(script: &str) -> Vec<Direction> {
     script
         .chars()
         .filter_map(|c| match c.to_ascii_lowercase() {

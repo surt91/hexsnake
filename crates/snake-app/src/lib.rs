@@ -7,6 +7,8 @@ mod hex_layout;
 mod highscores;
 mod seed;
 mod settings;
+#[cfg(test)]
+mod snapshot_tests;
 mod stats;
 mod theme;
 
