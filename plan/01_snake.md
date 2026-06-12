@@ -132,7 +132,7 @@ möglich (inkl. Auto-Pause beim offenen Dropdown), und der Seed erscheint
       Zyklusordnung; bei frei gewählten, inkompatiblen Maßen wird die
       Strategie ausgegraut (Tooltip erklärt warum).
       *(UI-Ausgrauen folgt im Overlay/Dropdown-Punkt dieser Phase.)*
-- [ ] **Monte-Carlo-Lookahead**: Rollouts mit Tick-Budget, Parameter
+- [x] **Monte-Carlo-Lookahead**: Rollouts mit Tick-Budget, Parameter
       (N, Horizont) als Konstanten mit sinnvollen Defaults.
 - [ ] **Debug-Overlay**: A*-Pfad, Flood-Fill-Heatmap, MC-Bewertung je
       Richtung einblendbar.
