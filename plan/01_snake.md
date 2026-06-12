@@ -149,17 +149,17 @@ rechenintensive Trainingsphase ganz ans Ende rückt — Entscheidung vom
 *(Spezialfutter und Replay/Ghost wurden bewusst nach „Spätere
 Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
 
-- [ ] **Theme-/Skin-System**: Theme-Abstraktion als reine Daten + Zeichenstil
+- [x] **Theme-/Skin-System**: Theme-Abstraktion als reine Daten + Zeichenstil
       (Farben, Kopf-/Segment-Form, Futter-Darstellung) — kein Zugriff auf
       die Spiellogik, prozedural gezeichnet (keine Sprite-Assets). Auswahl
       im Menü, Wahl wird persistiert.
-- [ ] Skins umsetzen: **Klassisch** (cleane Geometrie), **Honigwabe**
+- [x] Skins umsetzen: **Klassisch** (cleane Geometrie), **Honigwabe**
       (Wabenoptik, Raupe/Bienen, Honigtropfen als Futter), **Retro-LCD**
       (monochromes Nokia-Grün), **Neon** (dunkler Grund, Glow via
       halbtransparente Outlines), **Naturalistisch** (Kopf mit Augen, die
       Richtung Futter blicken; zum Schwanz schmaler werdende Segmente,
       Apfel als Futter).
-- [ ] **Pfad-Rendering („Schlängeln sichtbar")**: Mindestens ein Skin
+- [x] **Pfad-Rendering („Schlängeln sichtbar")**: Mindestens ein Skin
       zeichnet die Schlange als durchgehenden Körper von Kante zu Kante —
       ein Band durch die Zellzentren mit abgerundeten Gelenken, sodass der
       Verlauf der Windungen erkennbar bleibt und nicht nur, *welche* Felder
@@ -169,9 +169,9 @@ Ausbaustufen" verschoben — Entscheidung vom 2026-06-12.)*
       Band ab und setzt am gegenüberliegenden Rand fort. Naheliegende
       Kandidaten: **Naturalistisch** (Körperband, das zum Schwanz schmaler
       wird) und **Neon** (Glow-Linie).
-- [ ] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
+- [x] **Farbenblind-sichere Palette** als Pflicht-Theme: Schlange und Futter
       unterscheiden sich auch über Form, nicht nur Farbe.
-- [ ] Fress-/Game-Over-Effekte (theme-übergreifend).
+- [x] Fress-/Game-Over-Effekte (theme-übergreifend).
 - [ ] Touch-Steuerung (virtuelles Hex-Pad) für Mobile.
 - [ ] Statistik-Panel (Spiele, ⌀-Länge, Bestwerte).
 
