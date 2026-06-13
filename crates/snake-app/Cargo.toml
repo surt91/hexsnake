@@ -7,8 +7,10 @@ license.workspace = true
 [dependencies]
 snake-core = { path = "../snake-core", features = ["serde"] }
 eframe = { version = "0.34", features = ["persistence"] }
+ehttp = "0.7"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"

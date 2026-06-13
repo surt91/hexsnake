@@ -10,7 +10,9 @@ use snake_core::nn::NeuralNet;
 use snake_core::strategy::{
     ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
 };
-use snake_core::{Board, BoundaryMode, Config, Direction, GameState, Status, Strategy};
+use snake_core::{
+    Board, BoundaryMode, Config, Direction, GameState, Recorder, Replay, Status, Strategy,
+};
 
 use crate::hex_layout::HexLayout;
 use crate::seed::encode_seed;
@@ -42,6 +44,10 @@ pub enum SessionEvent {
 
 pub struct GameSession {
     state: GameState,
+    /// Records every tick's input so the run can be submitted to the global
+    /// leaderboard (seed + input list ⇒ server re-simulation).
+    recorder: Recorder,
+    config: Config,
     seed: u64,
     speed: Speed,
     /// Slowest base speed used at any point — highscores are filed under
@@ -96,16 +102,19 @@ fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<B
 impl GameSession {
     pub fn new(settings: &Settings, seed: u64, script: &[Direction]) -> Self {
         let (width, height) = settings.dimensions();
-        let state = GameState::new(Config {
+        let config = Config {
             width,
             height,
             boundary: settings.boundary,
             seed,
-        });
+        };
+        let state = GameState::new(config);
         let autopilot = build_autopilot(settings.strategy, seed, state.board());
         let autopilot_on = autopilot.is_some();
         Self {
             state,
+            recorder: Recorder::new(),
+            config,
             seed,
             speed: settings.speed,
             slowest_speed: settings.speed,
@@ -129,6 +138,11 @@ impl GameSession {
 
     pub fn autopilot_used(&self) -> bool {
         self.autopilot_used
+    }
+
+    /// The recorded run as a submittable replay (seed + input list).
+    pub fn replay(&self) -> Replay {
+        self.recorder.clone().into_replay(self.config)
     }
 
     /// The speed whose highscore table this run counts toward.
@@ -381,6 +395,7 @@ impl GameSession {
             } else {
                 self.script.pop_front()
             };
+            self.recorder.record(input);
             self.state.tick(input);
             // Schedule relative to the due time to avoid drift, but never
             // accumulate a backlog (e.g. after the tab was hidden).

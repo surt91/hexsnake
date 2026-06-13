@@ -5,6 +5,7 @@ mod app;
 mod game_view;
 mod hex_layout;
 mod highscores;
+mod net;
 mod seed;
 mod settings;
 #[cfg(test)]
