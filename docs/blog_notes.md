@@ -258,3 +258,43 @@ dass man es Monate später noch versteht.
   (`docs/training/neural-net-ga.md`).
 - **Box–Muller statt rand_distr**: Für Gauß-Mutation reichen zwei Zeilen
   Box–Muller — eine Dependency weniger im Trainer.
+
+## Phase 8 — Optionaler Server
+
+- **Verifikation als reines Re-Play, ohne Score im Submit**: Das `Replay`
+  trägt nur Brett, Seed und eine *sparse* `(tick, direction)`-Liste — keinen
+  Score. Der Server re-simuliert mit derselben `snake-core`-Crate und nimmt
+  den selbst errechneten Score; ein Client kann seine Punktzahl gar nicht
+  fälschen, weil sie nie übertragen wird. Die `Recorder`/`Replay`-Trennung
+  hält die Aufzeichnung (im UI) und die Wiedergabe (im Server) entkoppelt.
+- **Determinismus zahlt sich aus**: Dass `snake-core` seit Phase 1 strikt
+  deterministisch ist (seedbarer `Pcg32`, Reservoir-Sampling statt
+  HashMap-Reihenfolge), macht die Server-Verifikation zu einem Einzeiler —
+  gleiche Inputs ⇒ gleicher Verlauf, sonst 4xx. Der `verify()`-Loop
+  verbraucht Inputs „bei Tick-Gleichheit" und lehnt alles ab, was die Partie
+  nie erreicht (out-of-order, nach Spielende) oder ein hartes Tick-Budget
+  sprengt (Torus-Geradeauslauf endet nie).
+- **Speed ist nicht verifizierbar — und muss es nicht sein**: Die
+  Geschwindigkeit beeinflusst nur die Echtzeit-Taktung, nicht die
+  Simulation, taucht also nicht im Replay auf. Sie selektiert nur eine von 9
+  Tabellen; man kann damit keinen Score aufblähen, nur die Tabelle wählen.
+- **Hand-gerolltes Rate-Limit statt `tower-governor`**: Ein
+  Fixed-Window-`HashMap<IpAddr, (start, count)>` hinter einem Mutex ist für
+  eine einzelne Hobby-Instanz genug — und spart eine fragile Abhängigkeit
+  samt axum-Versions-Kompatibilität. `X-Forwarded-For` wird nur gelesen,
+  wenn explizit konfiguriert (`TRUST_FORWARDED_FOR`), sonst die Peer-IP.
+- **`Option<ConnectInfo>` geht in axum 0.8 nicht** (kein
+  `OptionalFromRequestParts` dafür) — ein eigener `ClientIp`-Extractor
+  kapselt die XFF-/Peer-Logik sauber und ist in `oneshot`-Tests
+  (ohne ConnectInfo) per `0.0.0.0`-Fallback testbar.
+- **Offline bleibt offline**: Der Client schickt per `ehttp` (nativ + WASM)
+  rein best-effort; Ergebnisse kommen über einen Channel, den das UI je
+  Frame leert. Server weg ⇒ stilles Zurückfallen auf lokale Tabellen,
+  offline gespielte Läufe landen in einer persistierten Pending-Queue und
+  werden gedrosselt nachgereicht. Die Server-URL kommt aus
+  `option_env!("SNAKE_SERVER_URL")` (Pages-Build), sonst same-origin im
+  Browser (Docker) bzw. Laufzeit-Env nativ.
+- **Daily offline ehrlich gemacht**: Der Tagesseed kommt vom Server (mit
+  Secret), offline gibt es einen datumsbasierten Fallback-Seed *ohne*
+  Secret. Solche Läufe ranken bewusst nur lokal — ihr Seed passt nicht zum
+  Server und würde bei der Re-Simulation zu Recht abgelehnt.

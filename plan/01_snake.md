@@ -214,15 +214,15 @@ echten Trainingslauf des Nutzers.)
 
 ## Phase 8 — Optionaler Server
 
-- [ ] `snake-server`: axum, SQLite; Endpoints `GET/POST /highscores/{mode}`.
+- [x] `snake-server`: axum, SQLite; Endpoints `GET/POST /highscores/{mode}`.
       Globale Leaderboards nur für die drei Presets; Identität ist ein frei
       wählbarer Name, das Submit-Schema enthält aber von Anfang an ein
       **optionales Signaturfeld** (Keypair-Nachrüstung später ohne
       Migration).
-- [ ] Verifikation: Client sendet Seed + Inputliste, Server re-simuliert mit
+- [x] Verifikation: Client sendet Seed + Inputliste, Server re-simuliert mit
       `snake-core` (gleiche Crate ⇒ gleiches Verhalten) und akzeptiert nur
       konsistente Läufe.
-- [ ] **Härtung der öffentlichen Endpoints**:
+- [x] **Härtung der öffentlichen Endpoints**:
       - Body-Size-Limit (axum `DefaultBodyLimit`) und Eingabevalidierung
         (Namenslänge, erlaubte Zeichen, plausible Feld-/Modus-Werte).
       - Rate Limiting pro IP auf dem POST-Endpoint (z. B. `tower-governor`);
@@ -233,12 +233,12 @@ echten Trainingslauf des Nutzers.)
         teure Anfragen den Server nicht auslasten können.
       - Tests: überlange Namen, überlange Inputlisten und inkonsistente
         Läufe werden mit 4xx abgelehnt.
-- [ ] Client: `ehttp`-Anbindung mit Timeout; nicht erreichbar ⇒ stilles
+- [x] Client: `ehttp`-Anbindung mit Timeout; nicht erreichbar ⇒ stilles
       Fallback auf lokale Tabelle, ausstehende Läufe werden lokal gemerkt
       und später nachgereicht. UI zeigt lokale und globale Tabelle.
-- [ ] Daily Challenge: Tagesseed vom Server, lokaler datumsbasierter
+- [x] Daily Challenge: Tagesseed vom Server, lokaler datumsbasierter
       Fallback; eigenes Leaderboard.
-- [ ] **All-in-one-Dockerfile**: Multi-Stage-Build (Stage 1: trunk-Release-
+- [x] **All-in-one-Dockerfile**: Multi-Stage-Build (Stage 1: trunk-Release-
       Build des WASM-Frontends; Stage 2: cargo-Build des Servers; Runtime-
       Stage: schlankes Image). Der axum-Server liefert neben der API auch
       die statischen Dateien aus (`tower-http` `ServeDir`) — damit ist das
@@ -248,12 +248,12 @@ echten Trainingslauf des Nutzers.)
       read-only (beschreibbar nur `/data`), keine zusätzlichen
       Capabilities; Beispiel-`docker-compose.yml` mit diesen Optionen
       beilegen.
-- [ ] Client-Konfiguration für beide Hosting-Varianten: API-Aufrufe gehen
+- [x] Client-Konfiguration für beide Hosting-Varianten: API-Aufrufe gehen
       per Default an **relative URLs** (same-origin — deckt die Docker-
       Variante ohne CORS ab); für den GitHub-Pages-Build wird die
       Server-URL zur Buildzeit/per Konfiguration gesetzt. GitHub Pages
       bleibt das primäre Hosting.
-- [ ] Deployment-Notizen (`docs/deployment.md`) mit drei Varianten:
+- [x] Deployment-Notizen (`docs/deployment.md`) mit drei Varianten:
       - **Docker auf VPS**: Volume für SQLite, Reverse Proxy (Caddy/Traefik)
         für automatisches HTTPS.
       - **Heimserver**: empfohlen via **Cloudflare Tunnel** (`cloudflared`
