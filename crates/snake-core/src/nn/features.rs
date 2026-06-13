@@ -4,9 +4,10 @@ use crate::coords::Direction;
 use crate::game::GameState;
 
 /// Per ray: inverse distance to the blocking cell (wall or body), inverse
-/// distance to the own body on the ray, and a "moving here approaches the
-/// food" flag. Plus one global length feature.
-pub const FEATURE_COUNT: usize = 6 * 3 + 1;
+/// distance to the own body on the ray, and a signed food-approach score
+/// (positive = closer, magnitude scales with 1/food_dist). Two globals:
+/// normalized snake length and normalized food distance.
+pub const FEATURE_COUNT: usize = 6 * 3 + 2;
 
 impl Direction {
     /// This direction rotated clockwise by `steps` × 60°.
@@ -19,9 +20,9 @@ impl Direction {
     }
 }
 
-/// Compute the feature vector. All values lie in [0, 1]; rays are ordered
-/// relative to the current heading (index 0 = straight ahead), so the
-/// representation is rotation-invariant.
+/// Compute the feature vector. Rays are ordered relative to the current
+/// heading (index 0 = straight ahead) so the representation is
+/// rotation-invariant. Values lie in [-1, 1].
 pub fn features(state: &GameState) -> Vec<f32> {
     let board = state.board();
     let head = state.head();
@@ -55,15 +56,21 @@ pub fn features(state: &GameState) -> Vec<f32> {
             }
         }
 
-        let approaches_food = board
-            .neighbor(head, dir)
-            .is_some_and(|n| board.distance(n, food) < food_dist);
+        // Signed food-approach score: positive when moving toward food,
+        // negative when moving away. Magnitude = 1/food_dist so the
+        // signal strengthens as food gets close. Zero when no neighbor.
+        let food_approach = board.neighbor(head, dir).map_or(0.0, |n| {
+            let d = board.distance(n, food);
+            (food_dist as f32 - d as f32) / food_dist as f32
+        });
 
         out.push(blocking.map_or(0.0, |d| 1.0 / d as f32));
         out.push(body.map_or(0.0, |d| 1.0 / d as f32));
-        out.push(if approaches_food { 1.0 } else { 0.0 });
+        out.push(food_approach);
     }
+    // Global: snake fill ratio and normalized food distance.
     out.push(state.snake_len() as f32 / board.num_cells() as f32);
+    out.push(food_dist as f32 / max_steps as f32);
     out
 }
 
@@ -97,7 +104,7 @@ mod tests {
                 let f = features(&state);
                 assert_eq!(f.len(), FEATURE_COUNT);
                 assert!(
-                    f.iter().all(|v| (0.0..=1.0).contains(v)),
+                    f.iter().all(|v| (-1.0..=1.0).contains(v)),
                     "features out of range: {f:?}"
                 );
             }
