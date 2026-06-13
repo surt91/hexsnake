@@ -7,15 +7,20 @@
 use std::path::PathBuf;
 
 use snake_train::neat::{self, NeatConfig};
-use snake_train::{train, TrainConfig};
+use snake_train::{train, train_az, TrainConfig};
 
 fn main() {
     let mut raw = std::env::args().skip(1).peekable();
-    // `snake-train neat ...` selects the NEAT trainer; everything else stays
-    // the GA/ES trainer for backwards compatibility.
+    // `snake-train neat ...` / `snake-train az ...` select the NEAT and
+    // AlphaZero-light trainers; everything else stays the GA/ES MLP trainer.
     if raw.peek().map(String::as_str) == Some("neat") {
         raw.next();
         run_neat(raw.collect());
+        return;
+    }
+    if raw.peek().map(String::as_str) == Some("az") {
+        raw.next();
+        run_az(raw.collect());
         return;
     }
 
@@ -57,6 +62,54 @@ fn main() {
         }
     }
     train(&config);
+}
+
+fn run_az(args: Vec<String>) {
+    // MCTS is expensive, so default to a smaller/shorter regime than the MLP.
+    let mut config = TrainConfig {
+        population: 48,
+        max_ticks: 1_500,
+        ..TrainConfig::default()
+    };
+    let mut sims = 16u32;
+    let mut it = args.into_iter();
+    while let Some(arg) = it.next() {
+        let mut value = |name: &str| {
+            it.next()
+                .unwrap_or_else(|| panic!("missing value for {name}"))
+        };
+        match arg.as_str() {
+            "--generations" => config.generations = value("--generations").parse().unwrap(),
+            "--population" => config.population = value("--population").parse().unwrap(),
+            "--games" => config.games_per_eval = value("--games").parse().unwrap(),
+            "--max-ticks" => config.max_ticks = value("--max-ticks").parse().unwrap(),
+            "--sigma" => config.sigma = value("--sigma").parse().unwrap(),
+            "--sims" => sims = value("--sims").parse().unwrap(),
+            "--seed" => config.seed = value("--seed").parse().unwrap(),
+            "--out" => config.out_dir = PathBuf::from(value("--out")),
+            "--checkpoint-every" => {
+                config.checkpoint_every = value("--checkpoint-every").parse().unwrap()
+            }
+            "--mixed" => config.mixed_boundary = true,
+            "--smoke" => {
+                config.generations = 3;
+                config.population = 8;
+                config.games_per_eval = 1;
+                config.max_ticks = 200;
+                sims = 8;
+            }
+            other => {
+                eprintln!("unknown argument: {other}");
+                eprintln!(
+                    "usage: snake-train az [--smoke] [--mixed] [--generations N] \
+                     [--population N] [--games N] [--max-ticks N] [--sims N] [--sigma F] \
+                     [--seed N] [--checkpoint-every N] [--out DIR]"
+                );
+                std::process::exit(2);
+            }
+        }
+    }
+    train_az(&config, sims);
 }
 
 fn run_neat(args: Vec<String>) {

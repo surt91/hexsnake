@@ -13,8 +13,9 @@ use rand_pcg::Pcg64;
 use rayon::prelude::*;
 
 use snake_core::benchmark::play_game;
-use snake_core::nn::{default_dims, Mlp, NeuralNet};
-use snake_core::{BoundaryMode, Config};
+use snake_core::nn::{default_dims, Mlp, NeuralNet, FEATURE_COUNT};
+use snake_core::strategy::{AlphaZeroLite, AZ_OUTPUTS};
+use snake_core::{BoundaryMode, Config, Strategy};
 
 #[derive(Debug, Clone)]
 pub struct TrainConfig {
@@ -59,34 +60,6 @@ impl Default for TrainConfig {
     }
 }
 
-/// Score dominates; surviving ticks break ties between equally hungry
-/// genomes early in training.
-fn fitness(config: &TrainConfig, genome: &[f32], eval_seeds: &[u64]) -> f64 {
-    let dims = default_dims();
-    let mlp = Mlp::from_params(&dims, genome.to_vec()).expect("genome has the right size");
-    let mut total = 0.0;
-    for (i, &seed) in eval_seeds.iter().enumerate() {
-        // 50/50 split: even indices use Walls, odd indices use Periodic.
-        let boundary = if config.mixed_boundary && i % 2 == 1 {
-            BoundaryMode::Periodic
-        } else {
-            config.board.boundary
-        };
-        let mut strategy = NeuralNet::new(mlp.clone());
-        let result = play_game(
-            &mut strategy,
-            Config {
-                seed,
-                boundary,
-                ..config.board
-            },
-            config.max_ticks,
-        );
-        total += f64::from(result.score) * 100.0 + result.ticks as f64 * 0.1;
-    }
-    total / eval_seeds.len() as f64
-}
-
 /// Box–Muller: keeps the dependency list free of rand_distr.
 fn gaussian(rng: &mut Pcg64) -> f32 {
     let u1: f64 = rng.random::<f64>().max(1e-12);
@@ -99,9 +72,16 @@ pub struct TrainResult {
     pub best_path: PathBuf,
 }
 
-pub fn train(config: &TrainConfig) -> TrainResult {
-    let dims = default_dims();
-    let n_params = Mlp::param_count(&dims);
+/// Generic truncation-selection ES over flat MLP genomes of shape `dims`.
+/// `build` turns a genome into the strategy whose game scores define fitness
+/// (score dominates; surviving ticks break ties early). Shared by the MLP and
+/// the AlphaZero-light trainers.
+fn evolve(
+    config: &TrainConfig,
+    dims: &[usize],
+    build: impl Fn(&[f32]) -> Box<dyn Strategy> + Sync,
+) -> TrainResult {
+    let n_params = Mlp::param_count(dims);
     let mut rng = Pcg64::seed_from_u64(config.seed);
 
     std::fs::create_dir_all(&config.out_dir).expect("create out dir");
@@ -125,7 +105,29 @@ pub fn train(config: &TrainConfig) -> TrainResult {
         let mut scored: Vec<(f64, usize)> = population
             .par_iter()
             .enumerate()
-            .map(|(i, genome)| (fitness(config, genome, &eval_seeds), i))
+            .map(|(i, genome)| {
+                let mut total = 0.0;
+                for (j, &seed) in eval_seeds.iter().enumerate() {
+                    // 50/50 split: even indices Walls, odd indices Periodic.
+                    let boundary = if config.mixed_boundary && j % 2 == 1 {
+                        BoundaryMode::Periodic
+                    } else {
+                        config.board.boundary
+                    };
+                    let mut strategy = build(genome);
+                    let result = play_game(
+                        strategy.as_mut(),
+                        Config {
+                            seed,
+                            boundary,
+                            ..config.board
+                        },
+                        config.max_ticks,
+                    );
+                    total += f64::from(result.score) * 100.0 + result.ticks as f64 * 0.1;
+                }
+                (total / eval_seeds.len() as f64, i)
+            })
             .collect();
         scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
 
@@ -136,11 +138,11 @@ pub fn train(config: &TrainConfig) -> TrainResult {
 
         if best > best_overall {
             best_overall = best;
-            let mlp = Mlp::from_params(&dims, population[scored[0].1].clone()).unwrap();
+            let mlp = Mlp::from_params(dims, population[scored[0].1].clone()).unwrap();
             std::fs::write(&best_path, mlp.to_text()).expect("write best.mlp");
         }
         if config.checkpoint_every > 0 && generation % config.checkpoint_every == 0 {
-            let mlp = Mlp::from_params(&dims, population[scored[0].1].clone()).unwrap();
+            let mlp = Mlp::from_params(dims, population[scored[0].1].clone()).unwrap();
             let path = config.out_dir.join(format!("gen_{generation:05}.mlp"));
             std::fs::write(path, mlp.to_text()).expect("write checkpoint");
         }
@@ -170,6 +172,29 @@ pub fn train(config: &TrainConfig) -> TrainResult {
         best_fitness: best_overall,
         best_path,
     }
+}
+
+/// Train the fixed-shape MLP strategy (GA/ES).
+pub fn train(config: &TrainConfig) -> TrainResult {
+    let dims = default_dims();
+    evolve(config, &dims, |genome| {
+        Box::new(NeuralNet::new(
+            Mlp::from_params(&dims, genome.to_vec()).expect("genome has the right size"),
+        ))
+    })
+}
+
+/// Train the AlphaZero-light policy/value net (7 outputs) by evolving it on
+/// MCTS-guided game scores. `sims` is the per-move tree-search budget — keep
+/// it small while training, since every move runs a full search.
+pub fn train_az(config: &TrainConfig, sims: u32) -> TrainResult {
+    let dims = vec![FEATURE_COUNT, 32, 24, AZ_OUTPUTS];
+    evolve(config, &dims, |genome| {
+        Box::new(AlphaZeroLite::new(
+            Mlp::from_params(&dims, genome.to_vec()).expect("genome has the right size"),
+            sims,
+        ))
+    })
 }
 
 #[cfg(test)]

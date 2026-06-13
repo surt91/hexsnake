@@ -279,19 +279,19 @@ Behavior Cloning wurde bewusst weggelassen.
 
 - [x] **NEAT** in `snake-train` (Rust-Track, kein Gradient nötig) —
       Netzstruktur wächst während des Trainings.
-- [ ] **PyO3-Bindings**: `snake-core` via maturin als Python-Modul
+- [x] **PyO3-Bindings**: `snake-core` via maturin als Python-Modul
       (Gym-artiges Env-Interface: `reset`/`step`/Observation), Python-Setup
       unter `python/` (uv/venv, dokumentiert). Voraussetzung für DQN & PPO.
-- [ ] **DQN und PPO** mit `stable-baselines3` gegen das PyO3-Env;
+- [x] **DQN und PPO** mit `stable-baselines3` gegen das PyO3-Env;
       Reward-Shaping (Futter, Überleben, Freiraum) dokumentieren. Export der
       Policy-Netze ins Rust-Gewichtsformat (Inferenz bleibt pur Rust/WASM).
-- [ ] **CNN-Input** (ganzes Brett als Gitter-Tensor) als alternative
+- [x] **CNN-Input** (ganzes Brett als Gitter-Tensor) als alternative
       Observation für DQN/PPO, Vergleich gegen Sensorstrahlen-Variante.
-- [ ] **AlphaZero-light** — Policy/Value-Netz ersetzt die Zufalls-Rollouts
+- [x] **AlphaZero-light** — Policy/Value-Netz ersetzt die Zufalls-Rollouts
       des Monte-Carlo-Lookahead, Training per Self-Play.
-- [ ] Alle Verfahren als Dropdown-Einträge + Aufnahme in den
+- [x] Alle Verfahren als Dropdown-Einträge + Aufnahme in den
       Benchmark-Harness (Vergleichstabelle ⌀-Score/⌀-Überlebenszeit).
-- [ ] Für **jedes** Verfahren mit Trainingslauf eine Anleitung
+- [x] Für **jedes** Verfahren mit Trainingslauf eine Anleitung
       `docs/training/<name>.md` (Skill `/training-docs`); der Agent führt
       nur Smoke-Runs aus, echte Läufe macht der Nutzer auf stärkerer
       Hardware.

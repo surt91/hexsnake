@@ -5,7 +5,8 @@
 use snake_core::benchmark::run_series;
 use snake_core::nn::{NeatNet, NeuralNet};
 use snake_core::strategy::{
-    ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper, Strategy,
+    AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
+    Strategy,
 };
 use snake_core::{Board, BoundaryMode, Config};
 
@@ -41,6 +42,10 @@ fn main() {
         ("NEAT", Box::new(|_| Box::new(NeatNet::embedded()))),
         ("DQN", Box::new(|_| Box::new(NeuralNet::embedded_dqn()))),
         ("PPO", Box::new(|_| Box::new(NeuralNet::embedded_ppo()))),
+        (
+            "AlphaZero-light",
+            Box::new(|_| Box::new(AlphaZeroLite::embedded())),
+        ),
     ];
 
     println!("{games} Partien je Strategie, max. {max_ticks} Ticks, Feld 16×12\n");
@@ -53,13 +58,13 @@ fn main() {
         };
         println!("== {boundary:?} ==");
         println!(
-            "{:<14} {:>10} {:>12} {:>10}",
+            "{:<16} {:>10} {:>12} {:>10}",
             "Strategie", "⌀ Score", "⌀ Ticks", "max Score"
         );
         for (name, make) in &mut strategies.iter_mut().map(|(n, f)| (*n, f)) {
             let summary = run_series(make.as_mut(), base, games, max_ticks);
             println!(
-                "{:<14} {:>10.2} {:>12.1} {:>10}",
+                "{:<16} {:>10.2} {:>12.1} {:>10}",
                 name, summary.avg_score, summary.avg_ticks, summary.max_score
             );
         }
