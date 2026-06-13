@@ -3,9 +3,11 @@
 
 mod features;
 mod mlp;
+mod neat;
 
 pub use features::{features, FEATURE_COUNT};
 pub use mlp::Mlp;
+pub use neat::{ConnGene, Genome, Net, NodeGene, NodeKind};
 
 use crate::coords::Direction;
 use crate::game::GameState;
@@ -51,34 +53,76 @@ impl NeuralNet {
 
 impl Strategy for NeuralNet {
     fn next_move(&mut self, state: &GameState) -> Direction {
-        let input = features(state);
-        let scores = self.mlp.forward(&input);
-
-        // Outputs are relative to the current heading: index i = heading
-        // rotated clockwise by i steps. Mask everything immediately fatal.
-        let safe: Vec<Direction> = safe_moves(state).into_iter().map(|(d, _)| d).collect();
-        let heading = state.direction();
-        self.debug.move_scores.clear();
-
-        let mut best: Option<(Direction, f32)> = None;
-        for (i, &score) in scores.iter().enumerate() {
-            let dir = heading.rotated_cw(i as u8);
-            self.debug.move_scores.push((dir, f64::from(score)));
-            if !safe.contains(&dir) {
-                continue;
-            }
-            if best.is_none_or(|(_, b)| score > b) {
-                best = Some((dir, score));
-            }
-        }
-        best.map(|(d, _)| d)
-            .unwrap_or_else(|| crate::strategy::doomed_move(state))
+        let scores = self.mlp.forward(&features(state));
+        pick_relative_move(state, &scores, &mut self.debug)
     }
 
     fn debug(&self) -> Option<&StrategyDebug> {
         Some(&self.debug)
     }
 }
+
+/// Pick a move from six heading-relative scores: index `i` = the current
+/// heading rotated clockwise by `i` steps. Immediately fatal moves are
+/// masked; the highest-scoring safe move wins, falling back to a doomed
+/// straight move when none is safe. Shared by the MLP and NEAT strategies.
+fn pick_relative_move(state: &GameState, scores: &[f32], debug: &mut StrategyDebug) -> Direction {
+    let safe: Vec<Direction> = safe_moves(state).into_iter().map(|(d, _)| d).collect();
+    let heading = state.direction();
+    debug.move_scores.clear();
+
+    let mut best: Option<(Direction, f32)> = None;
+    for (i, &score) in scores.iter().enumerate() {
+        let dir = heading.rotated_cw(i as u8);
+        debug.move_scores.push((dir, f64::from(score)));
+        if !safe.contains(&dir) {
+            continue;
+        }
+        if best.is_none_or(|(_, b)| score > b) {
+            best = Some((dir, score));
+        }
+    }
+    best.map(|(d, _)| d)
+        .unwrap_or_else(|| crate::strategy::doomed_move(state))
+}
+
+/// NEAT-driven strategy: same sensor features and move masking as
+/// [`NeuralNet`], but the network has an evolved topology.
+pub struct NeatNet {
+    net: Net,
+    debug: StrategyDebug,
+}
+
+impl NeatNet {
+    /// Compile a genome into a ready-to-play strategy.
+    pub fn new(genome: &Genome) -> Self {
+        Self {
+            net: genome.compile(),
+            debug: StrategyDebug::default(),
+        }
+    }
+
+    /// The checked-in embedded NEAT genome (smoke-run artifact until the user
+    /// runs the real training — see `docs/training/neat.md`).
+    pub fn embedded() -> Self {
+        let genome = Genome::from_text(EMBEDDED_NEAT).expect("embedded NEAT genome must parse");
+        Self::new(&genome)
+    }
+}
+
+impl Strategy for NeatNet {
+    fn next_move(&mut self, state: &GameState) -> Direction {
+        let scores = self.net.forward(&features(state));
+        pick_relative_move(state, &scores, &mut self.debug)
+    }
+
+    fn debug(&self) -> Option<&StrategyDebug> {
+        Some(&self.debug)
+    }
+}
+
+/// Embedded NEAT genome. Built with [`FEATURE_COUNT`] inputs and six outputs.
+pub const EMBEDDED_NEAT: &str = include_str!("../../assets/neat/best.neat");
 
 #[cfg(test)]
 mod tests {
@@ -109,6 +153,27 @@ mod tests {
                     state.status(),
                     Status::Running,
                     "nn must not pick a fatal move while a safe one exists"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn embedded_neat_parses_and_plays_legally() {
+        let mut net = NeatNet::embedded();
+        let mut state = GameState::new(Config::default());
+        for _ in 0..200 {
+            if state.status() != Status::Running {
+                break;
+            }
+            let had_safe = !safe_moves(&state).is_empty();
+            let dir = net.next_move(&state);
+            state.tick(Some(dir));
+            if had_safe {
+                assert_eq!(
+                    state.status(),
+                    Status::Running,
+                    "neat must not pick a fatal move while a safe one exists"
                 );
             }
         }
