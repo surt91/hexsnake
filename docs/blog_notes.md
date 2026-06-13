@@ -298,3 +298,37 @@ dass man es Monate später noch versteht.
   Secret), offline gibt es einen datumsbasierten Fallback-Seed *ohne*
   Secret. Solche Läufe ranken bewusst nur lokal — ihr Seed passt nicht zum
   Server und würde bei der Re-Simulation zu Recht abgelehnt.
+
+## Phase 9 — ML-Ausbaustufe (NEAT, DQN/PPO, AlphaZero-light)
+
+- **Inferenz vom Lernen entkoppelt**: Jedes Verfahren landet am Ende als
+  pures Rust-Netz (MLP- bzw. NEAT-Genom), das nativ und in WASM läuft —
+  trainiert wird in Rust (GA/NEAT/ES) oder Python (DQN/PPO), aber zur Laufzeit
+  kein PyTorch. Die Dropdown-Einträge sind „nur" austauschbare Gewichts-
+  Assets. Genau deshalb passt DQN/PPO ins selbe `.mlp`-Format: SB3 mit
+  `activation_fn=Tanh` und `net_arch=[32,24]` ergibt exakt `[20,32,24,6]`,
+  `argmax` über Q-Werte/Logits = `argmax` über die MLP-Ausgaben.
+- **NEAT-Inferenz = ein Topo-Sort**: Das Genom (Knoten + innovationsnummerierte
+  Kanten) wird einmal zu einem `Net` mit topologischer Auswertungsreihenfolge
+  (Kahn) kompiliert; `compile()` assert't damit zugleich, dass die Mutationen
+  feed-forward geblieben sind. Der Zyklus-Check bei „Kante hinzufügen" ist eine
+  Erreichbarkeitssuche von `to` nach `from`.
+- **PyO3-Env testbar ohne Python**: Die gesamte RL-Logik (reset/step/Reward/
+  Observation) liegt in einem reinen Rust-`Env`; der `#[pymodule]` ist ein
+  dünner Wrapper hinter einem optionalen `python`-Feature. So testet
+  `cargo test --workspace` das Env ohne Python-Toolchain, und maturin baut die
+  Extension mit `--features python`.
+- **Roundtrip-Test ohne torch**: Die klassische Transponierungs-/Layout-Falle
+  beim Gewichtsexport wird per `verify_roundtrip.py` gegen die *echte*
+  Rust-Inferenz geprüft — eine `mlp_forward`-Binding lässt numpy-Export und
+  `snake-core`-Forward auf Zufallsinputs vergleichen (max. Fehler 5e-6),
+  ganz ohne stable-baselines3.
+- **AlphaZero-light: Such-Budget ist Teil des Modells**: Mit GA evolviert
+  (gradientenfrei) und mit `--sims 16` trainiert, spielte das Netz mit
+  `--sims 48` plötzlich *schlechter* — es vertraut dem Value-Kopf zu tief und
+  kreist sicher, statt zu fressen. Lehre: Der Value ist nur für die
+  Trainings-Tiefe kalibriert; `embedded()` muss dasselbe Budget nutzen.
+- **Ein `evolve` für drei Trainer**: GA-MLP und AlphaZero-light teilen sich
+  denselben ES-Kern (Truncation + Gauß-Mutation, rayon-parallel) — der
+  Unterschied ist nur die `build: &[f32] -> Box<dyn Strategy>`-Closure und die
+  Netz-Dimensionen.
