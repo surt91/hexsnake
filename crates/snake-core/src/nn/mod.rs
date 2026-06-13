@@ -13,7 +13,7 @@ use crate::strategy::{safe_moves, Strategy, StrategyDebug};
 
 /// Hidden-layer sizes of the default architecture. Input/output dims are
 /// fixed by the feature vector and the six directions.
-pub const HIDDEN: [usize; 2] = [16, 12];
+pub const HIDDEN: [usize; 2] = [32, 24];
 
 /// The full layer dimensions of the default architecture.
 pub fn default_dims() -> Vec<usize> {
