@@ -331,13 +331,23 @@ impl GameSession {
 
     fn draw(&self, ui: &mut Ui) {
         let theme = self.theme.theme();
-        let (response, painter) =
-            ui.allocate_painter(ui.available_size(), Sense::focusable_noninteractive());
-        let rect = response.rect;
+        // Cap the board to the visible viewport and draw into it. A HUD row
+        // wider than a narrow (mobile) screen inflates `available_size`,
+        // which would otherwise size the painter larger than the screen and
+        // push the board (and the pause/game-over overlay) partly off the
+        // sides. Clamping to `content_rect` keeps everything centred and on
+        // screen.
+        let screen = ui.ctx().content_rect();
+        let avail = ui.available_size();
+        let desired = Vec2::new(avail.x.min(screen.width()), avail.y.min(screen.height()));
+        let (response, painter) = ui.allocate_painter(desired, Sense::focusable_noninteractive());
+        let rect = response.rect.intersect(screen);
         painter.rect_filled(rect, 0.0, theme.background);
 
         let board = self.state.board();
-        let layout = HexLayout::fit(rect.shrink(12.0), board);
+        // Inset enough that the wall frame (drawn ~10px outside the grid
+        // bounds) also stays within the viewport.
+        let layout = HexLayout::fit(rect.shrink(16.0), board);
 
         for cell in board.cells() {
             painter.add(Shape::convex_polygon(

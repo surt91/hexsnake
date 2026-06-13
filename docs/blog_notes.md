@@ -211,6 +211,23 @@ dass man es Monate später noch versteht.
   nächsten `request_repaint_after`-Termin — bei festem Game-Tick heißt das
   exakt **1 step = 1 tick**. Erst verwirrend (Spiel „zu schnell"), dann
   das perfekte Werkzeug: Tick-genaues Vorspulen ohne Zeitrechnerei.
+- **HUD frisst das Brett auf Mobil**: Auf schmalem Viewport (390 px) war
+  das Spielfeld an den Seiten abgeschnitten. Ursache war nicht das Brett,
+  sondern die *eine* horizontale HUD-Zeile: breiter als der Bildschirm,
+  blähte sie `ui.available_size()` auf, womit der Brett-Painter größer als
+  der Viewport wurde und das (zentrierte) Brett halb hinausragte. Fix:
+  Painter auf `ctx().content_rect()` kappen und ins sichtbare Rechteck
+  zeichnen (`response.rect.intersect(screen)`) — so bleiben Brett *und*
+  Pause/Game-Over-Overlay zentriert und vollständig sichtbar.
+- **Geometrischer e2e-Test statt Pixel-Diff**: Für „Brett komplett
+  sichtbar" reicht kein localStorage-Check und ein Snapshot wäre zu fragil.
+  Lösung: Screenshot mit Node-`zlib` selbst zu RGBA dekodieren und nur eine
+  *geometrische* Eigenschaft prüfen — die horizontale Ausdehnung der
+  Brett-Inhalte (mittleres Helligkeitsband: Wand/Schlange/Futter, nicht die
+  helle egui-Rahmen- und nicht die dunkle Brett-Hintergrundfläche) muss
+  zentriert und beidseitig vom Rand abgesetzt sein. Robust gegen Font-/
+  Rendering-Unterschiede, fängt die Regression aber zuverlässig (Span 4 px
+  statt ~370 px im Fehlerfall).
 
 ## Phase 7 — Neuronales Netz (GA/ES)
 
