@@ -3,7 +3,7 @@
 //! Usage: cargo run --release -p snake-core --example benchmark [games] [max_ticks]
 
 use snake_core::benchmark::run_series;
-use snake_core::nn::NeuralNet;
+use snake_core::nn::{NeatNet, NeuralNet};
 use snake_core::strategy::{
     ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper, Strategy,
 };
@@ -38,6 +38,7 @@ fn main() {
             Box::new(|seed| Box::new(MonteCarlo::new(seed))),
         ),
         ("Neural Net", Box::new(|_| Box::new(NeuralNet::embedded()))),
+        ("NEAT", Box::new(|_| Box::new(NeatNet::embedded()))),
     ];
 
     println!("{games} Partien je Strategie, max. {max_ticks} Ticks, Feld 16×12\n");

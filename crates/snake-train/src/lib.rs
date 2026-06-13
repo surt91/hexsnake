@@ -1,5 +1,9 @@
 //! GA/ES training: a population of flat MLP genomes, evaluated in
 //! parallel with rayon, truncation selection plus Gaussian mutation.
+//!
+//! NEAT training (evolving topology) lives in the [`neat`] module.
+
+pub mod neat;
 
 use std::io::Write as _;
 use std::path::PathBuf;
