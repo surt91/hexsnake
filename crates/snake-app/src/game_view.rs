@@ -159,24 +159,29 @@ impl GameSession {
         self.advance(ui);
         self.detect_effects(ui);
         self.draw(ui);
-        self.touch_pad(ui, lock_input);
-        event
+        let touch_event = self.touch_pad(ui, lock_input);
+        if touch_event != SessionEvent::Continue {
+            touch_event
+        } else {
+            event
+        }
     }
 
     /// Virtual hex pad for touch devices: six direction buttons arranged
     /// like the hex neighbors plus a central pause button. Appears after
     /// the first touch event and is drawn on the foreground layer.
-    fn touch_pad(&mut self, ui: &mut Ui, lock_input: bool) {
+    /// On game over shows "Neustart" and "Menü" buttons instead.
+    fn touch_pad(&mut self, ui: &mut Ui, lock_input: bool) -> SessionEvent {
         if ui.ctx().input(|i| i.any_touches()) {
             self.touch_seen = true;
         }
         if !self.touch_seen {
-            return;
+            return SessionEvent::Continue;
         }
+
         let screen = ui.ctx().content_rect();
-        let center = screen.right_bottom() - Vec2::new(110.0, 120.0);
-        let ring = 62.0;
-        let button_r = 26.0;
+        let status = self.state.status();
+        let finished = matches!(status, Status::GameOver | Status::Won);
 
         let painter = ui.ctx().layer_painter(eframe::egui::LayerId::new(
             eframe::egui::Order::Foreground,
@@ -188,6 +193,61 @@ impl GameSession {
                 .then(|| i.pointer.interact_pos())
                 .flatten()
         });
+
+        if finished && !lock_input {
+            // Replace the direction pad with two large tap targets.
+            let center = screen.center() + Vec2::new(0.0, 80.0);
+            let button_w = 130.0;
+            let button_h = 50.0;
+            let gap = 16.0;
+
+            let restart_rect = Rect::from_center_size(
+                center + Vec2::new(-(button_w * 0.5 + gap * 0.5), 0.0),
+                Vec2::new(button_w, button_h),
+            );
+            let menu_rect = Rect::from_center_size(
+                center + Vec2::new(button_w * 0.5 + gap * 0.5, 0.0),
+                Vec2::new(button_w, button_h),
+            );
+
+            for (rect, label) in [(&restart_rect, "Neustart"), (&menu_rect, "Menü")] {
+                let pressed = pressed_at.is_some_and(|p| rect.contains(p));
+                let bg_alpha = if pressed { 80u8 } else { 35u8 };
+                painter.rect_filled(
+                    *rect,
+                    8.0,
+                    Color32::from_rgba_unmultiplied(255, 255, 255, bg_alpha),
+                );
+                painter.rect_stroke(
+                    *rect,
+                    8.0,
+                    Stroke::new(1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 130)),
+                    StrokeKind::Middle,
+                );
+                painter.text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    label.to_string(),
+                    FontId::proportional(20.0),
+                    Color32::WHITE,
+                );
+            }
+
+            if let Some(pos) = pressed_at {
+                if restart_rect.contains(pos) {
+                    return SessionEvent::Restart;
+                }
+                if menu_rect.contains(pos) {
+                    return SessionEvent::BackToMenu;
+                }
+            }
+            return SessionEvent::Continue;
+        }
+
+        // Running (or paused) game: direction ring + central pause button.
+        let center = screen.right_bottom() - Vec2::new(110.0, 120.0);
+        let ring = 62.0;
+        let button_r = 26.0;
 
         // Center: pause toggle.
         painter.circle(
@@ -204,7 +264,7 @@ impl GameSession {
             Color32::from_rgba_unmultiplied(255, 255, 255, 160),
         );
         if let Some(pos) = pressed_at {
-            if pos.distance(center) <= button_r * 0.7 && self.state.status() == Status::Running {
+            if pos.distance(center) <= button_r * 0.7 && status == Status::Running {
                 self.paused = !self.paused;
                 self.next_tick = None;
             }
@@ -240,6 +300,8 @@ impl GameSession {
                 }
             }
         }
+
+        SessionEvent::Continue
     }
 
     /// Trigger the (theme-independent) eat and game-over effects on state
@@ -369,20 +431,28 @@ impl GameSession {
 
         match self.state.status() {
             Status::Running if self.paused => {
-                self.overlay(&painter, rect, "Pause", "Space/P: weiter — Esc: Menü");
+                let subtitle = if self.touch_seen {
+                    "Tippen auf ⏸ zum Fortsetzen"
+                } else {
+                    "Space/P: weiter — Esc: Menü"
+                };
+                self.overlay(&painter, rect, "Pause", subtitle);
             }
             Status::GameOver => {
-                let subtitle =
-                    format!("Score {} — Enter: Neustart — Esc: Menü", self.state.score());
+                let subtitle = if self.touch_seen {
+                    format!("Score {}", self.state.score())
+                } else {
+                    format!("Score {} — Enter: Neustart — Esc: Menü", self.state.score())
+                };
                 self.overlay(&painter, rect, "Game Over", &subtitle);
             }
             Status::Won => {
-                self.overlay(
-                    &painter,
-                    rect,
-                    "Gewonnen!",
-                    "Das Brett ist voll — Enter: Neustart",
-                );
+                let subtitle = if self.touch_seen {
+                    "Das Brett ist voll!"
+                } else {
+                    "Das Brett ist voll — Enter: Neustart"
+                };
+                self.overlay(&painter, rect, "Gewonnen!", subtitle);
             }
             _ => {}
         }
