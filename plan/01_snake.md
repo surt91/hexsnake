@@ -212,7 +212,7 @@ Trainingslauf ohne weitere Rückfragen auf einem anderen Rechner
 durchzuführen. (Das Kriterium „NN schlägt Greedy deutlich" wandert zum
 echten Trainingslauf des Nutzers.)
 
-## Phase 8 — Optionaler Server *(zurückgestellt — spätere Ausbaustufe)*
+## Phase 8 — Optionaler Server
 
 - [ ] `snake-server`: axum, SQLite; Endpoints `GET/POST /highscores/{mode}`.
       Globale Leaderboards nur für die drei Presets; Identität ist ein frei

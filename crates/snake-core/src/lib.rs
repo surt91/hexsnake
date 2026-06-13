@@ -9,9 +9,11 @@ mod board;
 mod coords;
 mod game;
 pub mod nn;
+pub mod replay;
 pub mod strategy;
 
 pub use board::{Board, BoundaryMode};
 pub use coords::{Axial, Direction, Offset};
 pub use game::{Config, GameState, Status};
+pub use replay::{Recorder, Replay, VerifiedRun};
 pub use strategy::Strategy;
