@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/snake-core", "crates/snake-app", "crates/snake-train"]
+members = [
+    "crates/snake-core",
+    "crates/snake-app",
+    "crates/snake-train",
+    "crates/snake-server",
+]
 
 [workspace.package]
 version = "0.1.0"

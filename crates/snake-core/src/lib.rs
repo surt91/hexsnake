@@ -4,6 +4,8 @@
 //! no wall clock, no hash-map iteration order) and compiles to
 //! `wasm32-unknown-unknown`.
 
+#[cfg(feature = "serde")]
+pub mod api;
 pub mod benchmark;
 mod board;
 mod coords;
