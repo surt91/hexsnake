@@ -34,8 +34,13 @@ jobs:
       # The repo name as public-url subpath is mandatory: GitHub Pages
       # serves project sites under /<repo>/, otherwise the WASM/JS assets
       # fail to load.
+      # Optional global-highscore server for the Pages build. Set the repo
+      # variable SNAKE_SERVER_URL (Settings → Variables) to point the client
+      # at an external API server; unset ⇒ the build stays local-only.
       - name: Build release bundle
         working-directory: crates/snake-app
+        env:
+          SNAKE_SERVER_URL: ${{ vars.SNAKE_SERVER_URL }}
         run: trunk build --release --public-url /hexsnake/
 
       - uses: actions/upload-pages-artifact@v3

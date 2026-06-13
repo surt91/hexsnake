@@ -1,0 +1,10 @@
+# Keep the build context small and avoid leaking local build artifacts.
+target/
+crates/snake-app/dist/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+.git/
+.github/
+training-out/
+*.md

@@ -1,0 +1,37 @@
+# Recommended hardened setup for the all-in-one HexSnake container.
+#
+#   docker compose up -d --build
+#
+# The server then serves the game and the global highscores on
+# http://localhost:8080 . Put a reverse proxy (Caddy/Traefik) or a Cloudflare
+# Tunnel in front of it for HTTPS — see docs/deployment.md.
+
+services:
+  hexsnake:
+    build: .
+    image: hexsnake:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - hexsnake-data:/data
+    environment:
+      # Submissions per client IP per minute.
+      RATE_LIMIT_PER_MIN: "20"
+      # Enable only behind a proxy/tunnel you control, so the real client IP
+      # is read from X-Forwarded-For for rate limiting:
+      # TRUST_FORWARDED_FOR: "1"
+      # For a GitHub-Pages frontend talking to this server, allow its origin:
+      # CORS_ALLOW_ORIGIN: "https://<user>.github.io"
+    # Hardening: read-only root filesystem (only /data and /tmp are writable),
+    # no extra capabilities, no privilege escalation.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  hexsnake-data:
