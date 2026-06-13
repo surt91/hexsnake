@@ -119,13 +119,13 @@ cargo run --release -p snake-core --example benchmark 50 10000
 
 | Checkpoint | Walls 005 | Periodic 005 | Walls 004 | Periodic 004 | Δ Walls | Δ Periodic |
 |------------|----------:|-------------:|----------:|-------------:|--------:|-----------:|
-| gen 250    | _todo_    | _todo_       | ≈55       | ≈66          | _todo_  | _todo_     |
-| gen 500    | _todo_    | _todo_       | 64.48     | 68.44        | _todo_  | _todo_     |
-| gen 1000   | _todo_    | _todo_       | 72.66     | 81.12        | _todo_  | _todo_     |
-| gen 2000   | _todo_    | _todo_       | 71.30     | 88.44        | _todo_  | _todo_     |
-| gen 3000   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
-| gen 4000   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
-| gen 4750   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
+| gen 250    | 69.40     | 67.44        | ≈55       | ≈66          | +26 %   | +2 %       |
+| gen 500    | **72.32** | **119.92**   | 64.48     | 68.44        | +12 %   | **+75 %**  |
+| gen 1000   | 78.00     | 100.20       | 72.66     | 81.12        | +7 %    | +23 %      |
+| gen 2000   | 81.24     | 105.86       | 71.30     | 88.44        | +14 %   | +20 %      |
+| gen 3000   | 83.74     | 117.62       | —         | —            | —       | —          |
+| gen 4000   | 82.24     | 121.82       | —         | —            | —       | —          |
+| gen 4750   | **94.28** | **136.24**   | —         | —            | —       | —          |
 | best (5000)| **91.40** | **125.12**   | 71.30     | 88.44        | **+28 %** | **+41 %** |
 
 ---
@@ -138,9 +138,39 @@ Die Mean-Fitness steigt von Gen 3000 (9862) bis Gen 5000 (10744) kontinuierlich 
 kein Abflachen. Das ist fundamental anders als Run 001–004, die alle ab Gen 1000–1500
 stagnierten. Das Budget war dort der Bottleneck, nicht die Architektur.
 
-Ein Lauf mit 10.000 Generationen würde wahrscheinlich weiter verbessern.
-Konservative Extrapolation (lineare Fortsetzung von Gen 4000–5000): +500–800 Fitness
-pro 1000 Gen → ggf. Score ~95–100 auf Walls, ~135+ auf Periodic.
+Die Checkpoint-Scores bestätigen das: Gen 4750 erreicht Walls **94.28** und
+Periodic **136.24** — beide höher als der finale Best-Benchmark (91.4 / 125.1),
+was auf Stichprobenrauschen (50 Spiele) hinweist. Der Trend ist bis zuletzt
+aufwärts gerichtet.
+
+Konservative Extrapolation (Gen 4000→4750: +12 / +14 auf den Scores):
+Ein Lauf mit 10.000 Generationen könnte Walls ~100 und Periodic ~150 erreichen.
+
+### Periodic-Sprung bei Gen 500: 67 → 120
+
+Der dramatischste Sprung im Checkpoint-Verlauf: Periodic steigt von 67 (gen 250)
+auf 120 (gen 500) — in nur 250 Generationen. Run 004 erreichte bei gen 500
+nur 68 auf Periodic. Der Unterschied: Population 512 (statt 256) erzeugt in
+der frühen Explorationsphase viel breitere Coverage, findet die Periodic-Strategie
+schneller. Das gleiche Phänomen bei kleinerer Skala sah man in Run 003 (gen 100
+Periodic=0, gen 500 Periodic=78).
+
+### Walls und Periodic lernen unterschiedlich schnell
+
+| Gen  | Walls | Periodic | Verhältnis P/W |
+|------|------:|--------:|---------------:|
+| 250  | 69.4  | 67.4    | 0.97           |
+| 500  | 72.3  | 119.9   | 1.66           |
+| 1000 | 78.0  | 100.2   | 1.29           |
+| 2000 | 81.2  | 105.9   | 1.30           |
+| 3000 | 83.7  | 117.6   | 1.41           |
+| 4750 | 94.3  | 136.2   | 1.44           |
+
+Periodic springt früher (Gen 500) und bleibt dauerhaft ~30–40 % über Walls.
+Mögliche Erklärung: Auf dem Torus gibt es mehr Raum zur Exploration (keine Wände
+als Fallstricke) — das Netz findet dort schnell eine stabile Heuristik.
+Auf Walls sind die Randbedingungen komplexer (Wand-Abstand muss berücksichtigt
+werden), was feinere Gewichtsjustierungen erfordert.
 
 ### Budget-Budget-Budget
 
