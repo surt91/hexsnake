@@ -212,7 +212,7 @@ Trainingslauf ohne weitere Rückfragen auf einem anderen Rechner
 durchzuführen. (Das Kriterium „NN schlägt Greedy deutlich" wandert zum
 echten Trainingslauf des Nutzers.)
 
-## Phase 8 — Optionaler Server
+## Phase 8 — Optionaler Server *(zurückgestellt — spätere Ausbaustufe)*
 
 - [ ] `snake-server`: axum, SQLite; Endpoints `GET/POST /highscores/{mode}`.
       Globale Leaderboards nur für die drei Presets; Identität ist ein frei
@@ -273,34 +273,31 @@ verhält sich das Spiel exakt wie vorher.
 
 ## Phase 9 — ML-Ausbaustufe: weitere Lernverfahren
 
-Ziel: ein Strategie-Dropdown mit GA/ES, NEAT, Behavior Cloning, DQN und PPO,
-die im Benchmark gegeneinander antreten (vgl. Konzept §3.8).
+Ziel: ein Strategie-Dropdown mit GA/ES, NEAT, DQN und PPO (inkl.
+CNN-Observation), die im Benchmark gegeneinander antreten (vgl. Konzept §3.8).
+Behavior Cloning wurde bewusst weggelassen.
 
-- [ ] **NEAT** in `snake-train` (bleibt im Rust-Track, kein Gradient nötig);
-      optional **CMA-ES** als alternativer Optimierer für das bestehende MLP.
+- [ ] **NEAT** in `snake-train` (Rust-Track, kein Gradient nötig) —
+      Netzstruktur wächst während des Trainings.
 - [ ] **PyO3-Bindings**: `snake-core` via maturin als Python-Modul
       (Gym-artiges Env-Interface: `reset`/`step`/Observation), Python-Setup
-      unter `python/` (uv/venv, dokumentiert).
-- [ ] **Behavior Cloning**: Datensatz-Generator (Pfadplaner spielt headless,
-      loggt Zustand→Zug), Supervised Training in PyTorch, Export ins
-      Rust-Gewichtsformat.
+      unter `python/` (uv/venv, dokumentiert). Voraussetzung für DQN & PPO.
 - [ ] **DQN und PPO** mit `stable-baselines3` gegen das PyO3-Env;
       Reward-Shaping (Futter, Überleben, Freiraum) dokumentieren. Export der
       Policy-Netze ins Rust-Gewichtsformat (Inferenz bleibt pur Rust/WASM).
-- [ ] Optional: **CNN-Input** (Brett als Gitter-Tensor) als alternative
-      Observation für DQN/PPO, Vergleich gegen Sensorstrahlen.
+- [ ] **CNN-Input** (ganzes Brett als Gitter-Tensor) als alternative
+      Observation für DQN/PPO, Vergleich gegen Sensorstrahlen-Variante.
+- [ ] **AlphaZero-light** — Policy/Value-Netz ersetzt die Zufalls-Rollouts
+      des Monte-Carlo-Lookahead, Training per Self-Play.
 - [ ] Alle Verfahren als Dropdown-Einträge + Aufnahme in den
       Benchmark-Harness (Vergleichstabelle ⌀-Score/⌀-Überlebenszeit).
 - [ ] Für **jedes** Verfahren mit Trainingslauf eine Anleitung
       `docs/training/<name>.md` (Skill `/training-docs`); der Agent führt
       nur Smoke-Runs aus, echte Läufe macht der Nutzer auf stärkerer
       Hardware.
-- [ ] Optional (anspruchsvollste Stufe): **AlphaZero-light** — Policy/Value-
-      Netz ersetzt die Zufalls-Rollouts des Monte-Carlo-Lookahead, Training
-      per Self-Play.
 
-**Done wenn:** Mindestens GA/ES, Behavior Cloning, DQN und PPO sind im
-Browser wählbar und der Benchmark zeigt eine Vergleichstabelle.
+**Done wenn:** GA/ES, NEAT, DQN und PPO sind im Browser wählbar und
+der Benchmark zeigt eine Vergleichstabelle.
 
 ## Spätere Ausbaustufen (bewusst nicht geplant)
 
