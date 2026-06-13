@@ -26,6 +26,8 @@ pub struct TrainConfig {
     pub elite_frac: f64,
     pub seed: u64,
     pub board: Config,
+    /// If true, half of the evaluation games use Walls, half use Periodic.
+    pub mixed_boundary: bool,
     pub checkpoint_every: u32,
     pub out_dir: PathBuf,
 }
@@ -46,6 +48,7 @@ impl Default for TrainConfig {
                 boundary: BoundaryMode::Walls,
                 seed: 0,
             },
+            mixed_boundary: false,
             checkpoint_every: 25,
             out_dir: PathBuf::from("training-out"),
         }
@@ -58,12 +61,19 @@ fn fitness(config: &TrainConfig, genome: &[f32], eval_seeds: &[u64]) -> f64 {
     let dims = default_dims();
     let mlp = Mlp::from_params(&dims, genome.to_vec()).expect("genome has the right size");
     let mut total = 0.0;
-    for &seed in eval_seeds {
+    for (i, &seed) in eval_seeds.iter().enumerate() {
+        // 50/50 split: even indices use Walls, odd indices use Periodic.
+        let boundary = if config.mixed_boundary && i % 2 == 1 {
+            BoundaryMode::Periodic
+        } else {
+            config.board.boundary
+        };
         let mut strategy = NeuralNet::new(mlp.clone());
         let result = play_game(
             &mut strategy,
             Config {
                 seed,
+                boundary,
                 ..config.board
             },
             config.max_ticks,

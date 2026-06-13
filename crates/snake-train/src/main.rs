@@ -27,6 +27,7 @@ fn main() {
             "--checkpoint-every" => {
                 config.checkpoint_every = value("--checkpoint-every").parse().unwrap()
             }
+            "--mixed" => config.mixed_boundary = true,
             "--smoke" => {
                 // Minimal end-to-end pipeline check, finishes in seconds.
                 config.generations = 3;
@@ -37,7 +38,7 @@ fn main() {
             other => {
                 eprintln!("unknown argument: {other}");
                 eprintln!(
-                    "usage: snake-train [--smoke] [--generations N] [--population N] \
+                    "usage: snake-train [--smoke] [--mixed] [--generations N] [--population N] \
                      [--games N] [--max-ticks N] [--sigma F] [--seed N] \
                      [--checkpoint-every N] [--out DIR]"
                 );
