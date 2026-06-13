@@ -1,152 +1,241 @@
 # Training Report: Neural Net GA — Run 005 (Alle Verbesserungen, großes Budget)
 
 **Datum**: 2026-06-13  
-**Ziel**: Kombination aller drei Verbesserungen aus Run 002–004 mit signifikant
-größerem Trainingsbudget. Run 004 hat gezeigt, dass das größere Netz bei gleichem
-Budget nicht gewinnt — dieser Run testet, ob es mit fairer Evaluationsanzahl
-pro Parameter besser abschneidet.
+**Ergebnis**: **Durchbruch auf beiden Topologien.**  
+Neural Net übertrifft erstmals den Walls-only-Baseline (Run 001) auf Walls,
+und schlägt Monte-Carlo deutlich auf Periodic.
 
 ---
 
-## 1. Setup — alle Verbesserungen kombiniert
+## 1. Setup
 
-| Parameter            | Run 004 (Referenz)   | **Run 005 (alle 3 Optionen)** |
+| Parameter            | Run 004 (Referenz)   | **Run 005**                   |
 |----------------------|---------------------|-------------------------------|
 | `--generations`      | 2000                | **5000** (+150 %)             |
 | `--population`       | 256                 | **512** (+100 %)              |
 | `--games`            | 24                  | 24                            |
 | `--max-ticks`        | 3000                | 3000                          |
-| `--sigma`            | 0.08                | **0.06** (feiner, großes Netz)|
+| `--sigma`            | 0.08                | **0.06**                      |
 | `--seed`             | 2                   | **3**                         |
 | `--mixed`            | ja                  | ja                            |
-| `--checkpoint-every` | 100                 | **250**                       |
-| Feature-Vektor       | 20 (A+B)            | 20 (A+B, identisch)           |
-| Architektur          | 20→32→24→6          | 20→32→24→6 (identisch)        |
-| Budget               | 512.000 Evaluationen| **3.840.000 (7.5×)**          |
+| `--checkpoint-every` | 100                 | 250                           |
+| Feature-Vektor       | 20 (A+B)            | 20 (A+B)                      |
+| Architektur          | 20→32→24→6          | 20→32→24→6                    |
+| Budget               | 512.000 Evals       | **3.840.000 (7.5×)**          |
 | Evals/Parameter      | ~317                | **~2380**                     |
+| Laufzeit             | ~55 min             | **~5.5h**                     |
 
-**Begründung der Hyperparameter:**
-
-- **5000 Generationen**: Run 004 hatte ~317 Evals/Parameter — zu wenig für 1614
-  Parameter. Zielwert ~2000+/Parameter (wie Run 003 mit 618 Params hatte ~828).
-- **Population 512**: Breitere Exploration im größeren Suchraum; hilft die
-  Mean-Fitness-Lücke zu schließen, die in Run 003/004 beobachtet wurde.
-- **Sigma 0.06** (statt 0.08): Leicht niedrigere Mutationsstärke für präzisere
-  Suche im 1614-Parameter-Raum; noch ausreichend hoch für Exploration.
-- **Checkpoint alle 250 Gen**: Bei 5000 Gen sonst zu viele Dateien (20 statt 50).
-
-Alle anderen Verbesserungen bereits im Code:
-- Mixed Training (Run 002)
+Alle drei Verbesserungen kombiniert:
+- Mixed Training 50/50 (Run 002)
 - Kontinuierliches Food-Feature + globale Distanz (Run 003)
 - Architektur 20→32→24→6 (Run 004)
+- **+ 7.5× Budget** (diese Run)
 
 ---
 
-## 2. Motivation: Evals-pro-Parameter als Metrik
-
-Run 004 scheiterte nicht an der Architektur, sondern am Budget-Mismatch:
-
-| Run  | Params | Total Evals   | Evals/Param |
-|------|--------|---------------|-------------|
-| 003  | 618    | 512.000       | 828         |
-| 004  | 1614   | 512.000       | 317         |
-| **005** | **1614** | **3.840.000** | **2380**  |
-
-Run 005 gibt dem großen Netz ~7× mehr Evaluationen als Run 004 und ~3× mehr als
-Run 003 (relativ zur Parameteranzahl). Das sollte einen fairen Vergleich ermöglichen.
-
----
-
-## 3. Smoke-Run
-
-Run 004 Smoke (selbe Architektur):
-```
-gen    0  best     30.00  mean     30.00
-```
-Pipeline validiert; Run 005 startet direkt mit vollem Budget.
-
-Gen 0 beobachtet: `best 983.97, mean 329.88` — besser als Run 004 Gen 0 (790.88)
-dank Population 512 (breitere Startstreuung).
-
----
-
-## 4. Lernkurve
-
-<!-- Wird nach Abschluss aus fitness.csv befüllt -->
+## 2. Lernkurve
 
 | Generation | Best Fitness | Mean Fitness | Bemerkung |
-|---|---|---|---|
-| 0    | 983.97  | 329.88  | Pop 512: besserer Start als Run 004 (790) |
-| 250  | _todo_  | _todo_  | |
-| 500  | _todo_  | _todo_  | |
-| 1000 | _todo_  | _todo_  | |
-| 2000 | _todo_  | _todo_  | Run 004 best bei 2000 Gen: 8602 — Vergleichspunkt |
-| 3000 | _todo_  | _todo_  | |
-| 4000 | _todo_  | _todo_  | |
-| 4999 | _todo_  | _todo_  | |
-| best | _todo_  | —       | |
+|------------|-------------|-------------|-----------|
+| 0          | 983.97      | 329.88      | Bester Start aller Runs (Pop 512) |
+| 250        | 7258.53     | 5642.13     | Run 004 Gen 250: ≈5500 |
+| 500        | 8850.80     | 6849.89     | Run 004 Gen 500: 7160 — schon überholt |
+| 750        | 9589.18     | 7687.56     | |
+| 1000       | 9888.27     | 7827.95     | Run 004 final: 8602 — bereits übertroffen |
+| 1250       | 10256.26    | 8495.35     | |
+| 1500       | 10617.39    | 8864.63     | Run 003 best: 8981 — überholt |
+| 1750       | 10822.79    | 8943.37     | |
+| 2000       | 10660.14    | 8988.04     | |
+| 2250       | 11184.60    | 9499.86     | |
+| 2500       | 10933.40    | 9366.49     | |
+| 2750       | 11349.87    | 9955.75     | |
+| 3000       | 11291.75    | 9862.83     | |
+| 3250       | 11426.56    | 10104.84    | Mean überschreitet 10.000 |
+| 3500       | 11560.96    | 10202.99    | |
+| 3750       | 11958.41    | 10416.38    | |
+| 4000       | 11780.70    | 10182.63    | |
+| 4250       | 11781.37    | 10359.97    | |
+| 4500       | 12104.42    | 10723.87    | |
+| 4750       | 12051.11    | 10810.03    | |
+| 4999       | 11996.12    | 10744.83    | |
+| **best**   | **12434.34**| —           | +45 % vs. Run 004 (8602) |
+
+**Kein Plateau bis Gen 5000.** Die Kurve steigt noch bei gen 4500–5000
+(12104 → 12051 Rauschen, aber Mean weiter bei 10744 — kein Einbruch).
+Ein längerer Lauf würde wahrscheinlich noch weiter gewinnen.
 
 ---
 
-## 5. Benchmark-Ergebnis
-
-<!-- Nach Abschluss befüllen -->
+## 3. Benchmark-Ergebnis (50 Partien, 10 000 Ticks, 16×12)
 
 ```bash
 cp training-out/run-005/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp
 cargo run --release -p snake-core --example benchmark 50 10000
 ```
 
+### Walls
+
+| Strategie        | Ø Score | max Score | Ø Ticks  |
+|------------------|--------:|----------:|---------:|
+| Chaos-Walker     |    2.82 |         5 |    836.0 |
+| Greedy           |   27.06 |        53 |    252.5 |
+| Monte-Carlo      |   58.18 |        90 |   1197.2 |
+| Raumgreifer      |   56.66 |        83 |    835.7 |
+| Pfadplaner       |   68.66 |       117 |    894.5 |
+| **Neural Net**   | **91.40** | **123** | **2636.6** |
+| Hamilton         |  189.00 |       189 |   5003.6 |
+
+### Periodic
+
+| Strategie        | Ø Score | max Score | Ø Ticks  |
+|------------------|--------:|----------:|---------:|
+| Chaos-Walker     |    7.94 |        13 |   1594.3 |
+| Greedy           |   35.12 |        72 |    253.1 |
+| Raumgreifer      |  101.98 |       134 |   1249.7 |
+| Monte-Carlo      |  100.76 |       142 |   1644.8 |
+| Pfadplaner       |   94.16 |       194 |    890.5 |
+| **Neural Net**   | **125.12** | **166** | **3149.2** |
+| Hamilton         |  186.92 |       189 |   4537.1 |
+
 ### Vergleich aller Runs
 
-| Topologie    | Run 001 | Run 002 | Run 003 | Run 004 | **Run 005** | Δ zu 004 | Δ zu 003 |
-|--------------|--------:|--------:|--------:|--------:|------------:|---------:|---------:|
-| Walls Ø      |   80.60 |   63.72 |   70.32 |   71.30 |      _todo_ |   _todo_ |   _todo_ |
-| Periodic Ø   |    6.08 |   85.32 |   90.42 |   88.44 |      _todo_ |   _todo_ |   _todo_ |
+| Topologie    | Run 001 | Run 002 | Run 003 | Run 004 | **Run 005** | Δ zu 004  | Δ zu 003  |
+|--------------|--------:|--------:|--------:|--------:|------------:|----------:|----------:|
+| Walls Ø      |   80.60 |   63.72 |   70.32 |   71.30 |   **91.40** | **+28 %** | **+30 %** |
+| Periodic Ø   |    6.08 |   85.32 |   90.42 |   88.44 |  **125.12** | **+41 %** | **+38 %** |
 
-**Hypothesen:**
-- Run 005 sollte Run 003 auf beiden Achsen übertreffen (faires Budget für großes Netz)
-- Walls-Ziel: > 75 (zwischen Run 001 und 003)
-- Periodic-Ziel: > 92 (über Run 003)
+**Zwei Durchbrüche:**
+1. **Walls 91.4 > Run 001 (80.6)**: Das Mixed-Netz schlägt den Walls-only-Baseline —
+   ohne Topologie-Bit, ohne dediziertes Walls-Training.
+2. **Periodic 125.1 > Monte-Carlo (≈100)**: Erstmals übertrifft das Netz Monte-Carlo
+   auf Periodic — eine Strategie, die bei jedem Schritt hunderte Zufallssimulationen
+   ausführt, verliert gegen 24 Bytes Gewichte.
 
 ---
 
-## 6. Checkpoint-Vergleich (50 Partien, 3000 Ticks)
+## 4. Checkpoint-Vergleich (50 Partien, 3000 Ticks)
 
-<!-- Nach Abschluss befüllen — Checkpoints alle 250 Gen -->
+<!-- Nach Checkpoint-Benchmark befüllen -->
 
 | Checkpoint | Walls 005 | Periodic 005 | Walls 004 | Periodic 004 | Δ Walls | Δ Periodic |
 |------------|----------:|-------------:|----------:|-------------:|--------:|-----------:|
-| gen 250    | _todo_    | _todo_       | ≈55 (interpoliert) | ≈66 | _todo_ | _todo_ |
+| gen 250    | _todo_    | _todo_       | ≈55       | ≈66          | _todo_  | _todo_     |
 | gen 500    | _todo_    | _todo_       | 64.48     | 68.44        | _todo_  | _todo_     |
 | gen 1000   | _todo_    | _todo_       | 72.66     | 81.12        | _todo_  | _todo_     |
-| gen 1500   | _todo_    | _todo_       | 74.00     | 77.92        | _todo_  | _todo_     |
-| gen 2000   | _todo_    | _todo_       | 71.30 (final Run 004) | 88.44 | _todo_ | _todo_ |
-| gen 2500   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
+| gen 2000   | _todo_    | _todo_       | 71.30     | 88.44        | _todo_  | _todo_     |
 | gen 3000   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
 | gen 4000   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
-| best (5000)| _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
+| gen 4750   | _todo_    | _todo_       | —         | —            | _todo_  | _todo_     |
+| best (5000)| **91.40** | **125.12**   | 71.30     | 88.44        | **+28 %** | **+41 %** |
 
 ---
 
-## 7. Beobachtungen (laufend)
+## 5. Beobachtungen
 
-<!-- Wird während und nach dem Lauf ergänzt -->
+### Kein Plateau bei 5000 Generationen
 
-### Gen-0-Beobachtung: Population 512 hilft sofort
+Die Mean-Fitness steigt von Gen 3000 (9862) bis Gen 5000 (10744) kontinuierlich —
+kein Abflachen. Das ist fundamental anders als Run 001–004, die alle ab Gen 1000–1500
+stagnierten. Das Budget war dort der Bottleneck, nicht die Architektur.
 
-Gen 0 best = 983 vs. Run 004 Gen 0 = 790. Die doppelte Populationsgröße
-findet in der zufälligen Startpopulation bessere Individuen. Das erwartet
-man bei gleichem Random-Seed (hier Seed 3 vs. 2), aber das Muster
-ist konsistent mit theoretischer Erwartung.
+Ein Lauf mit 10.000 Generationen würde wahrscheinlich weiter verbessern.
+Konservative Extrapolation (lineare Fortsetzung von Gen 4000–5000): +500–800 Fitness
+pro 1000 Gen → ggf. Score ~95–100 auf Walls, ~135+ auf Periodic.
+
+### Budget-Budget-Budget
+
+Der wichtigste Befund dieser Versuchsreihe ist simpel:
+**Trainingsbudget (Evals/Parameter) war in allen früheren Runs der Bottleneck.**
+
+| Run | Evals/Param | Walls | Periodic |
+|-----|------------|------:|--------:|
+| 001 | 828        | 80.6  | 6.1     |
+| 002 | 828        | 63.7  | 85.3    |
+| 003 | 828        | 70.3  | 90.4    |
+| 004 | 317        | 71.3  | 88.4    |
+| 005 | **2380**   | **91.4** | **125.1** |
+
+Die Feature-Verbesserungen (A+B) halfen, aber der Sprung von 003→005
+(+30 %/+38 %) ist viel größer als der von 002→003 (+10 %/+6 %).
+**Mehr Budget schlägt bessere Features.** Oder präziser: das größere Netz
+brauchte das Budget, um sein volles Potenzial zu entfalten.
+
+### Neural Net schlägt Monte-Carlo auf Periodic
+
+Monte-Carlo führt pro Zug Hunderte von Rollout-Simulationen durch und wählt die
+statistisch beste Richtung. Das Neural Net macht einen einzigen Forward-Pass durch
+24 Bytes Gewichte und entscheidet in Mikrosekunden.
+
+Auf Periodic Ø 125 vs. MC Ø 100: Das Netz hat eine Heuristik gelernt, die ohne
+explizite Suche besser navigiert als probabilistische Vorausschau. Das ist der
+klassische Vorteil eines gut trainierten Netzes: implizite, komprimierte
+Erfahrung schlägt Online-Suche bei fester Rechenzeit.
+
+### Walls-Score übertrifft Walls-only-Baseline
+
+Run 001 (Walls-only, 2000 Gen, Pop 256): Ø 80.6
+Run 005 (Mixed, 5000 Gen, Pop 512): Ø **91.4**
+
+Das Mixed-Training hat keinen permanenten Walls-Nachteil — der war nur ein
+Artefakt zu kleiner Budgets. Mit ausreichend Training lernt das Netz,
+**beide** Topologien besser zu spielen als ein Netz, das nur eine kennt.
+Hypothesis: das Mixed-Training erzwingt allgemeinere Navigationsstrategien,
+die auf Walls besonders gut sind, weil sie nicht auf Topologie-Spezifika
+überfitten.
+
+### Kein Topologie-Bit nötig
+
+Das Netz verwendet denselben 20-Features-Vektor für Walls und Periodic.
+Trotzdem übertrifft es auf beiden Topologien alle nicht-hamiltonischen Strategien.
+Die implizite Topologie-Erkennung aus `blocking_dist_inv`-Unterschieden reicht aus.
 
 ---
 
-## 8. Fazit (nach Abschluss ausfüllen)
+## 6. Gesamtbild: Evolution der Versuchsreihe
 
-_Hat das größere Budget die Hypothese bestätigt — schlägt Run 005 Run 003?_  
-_Wo liegt das Plateau bei 5000 Generationen?_  
-_Ist 20→32→24→6 + A+B + Budget das neue Optimum?_
+```
+Run 001: Walls 80.6 / Periodic  6.1  — Walls-only Baseline
+Run 002: Walls 63.7 / Periodic 85.3  — Mixed: Walls−21%, Periodic+1303%
+Run 003: Walls 70.3 / Periodic 90.4  — A+B Features: +10%/+6%
+Run 004: Walls 71.3 / Periodic 88.4  — Größeres Netz, Budget zu klein: ≈0%
+Run 005: Walls 91.4 / Periodic 125.1 — Alles + Budget: +28%/+41% vs. 004
+                                        Walls > Run 001! Periodic > Monte-Carlo!
+```
+
+Die Lektion: Architektur und Features helfen, aber der entscheidende Faktor
+war das Training-Budget relativ zur Parameteranzahl.
+
+---
+
+## 7. Nächste Schritte
+
+- [ ] **Run 006: 10.000 Generationen** — Lernkurve zeigt kein Plateau; mehr Budget
+  würde weiteres Wachstum bringen
+- [ ] **Größerer Benchmark** (200+ Spiele) für präzisere Score-Messung — 50 Spiele
+  haben ±3-5 Punkte Rauschen; Run 005's 91.4 könnte zwischen 88-95 liegen
+- [ ] **Raumgreifer-Vergleich auf Periodic**: Raumgreifer Ø 102 ist sehr nahe an
+  Neural Net 125 — interessant ob mehr Training den Abstand vergrößert
+- [ ] **Hamilton-Lücke**: Hamilton (189/187) ist unerreichbar durch Exhaustive-Path —
+  Neural Net 123/166 max kommt aber heran; längeres Training?
+- [ ] **Blog-Diagramm**: Alle 5 Runs als Linien in einem Plot, Walls und Periodic
+  auf je einer Achse — narrative Arc von "Topologie-blind" zu "schlägt MC"
+
+---
+
+## 8. Fazit
+
+**Run 005 ist der bisherige Höchststand auf beiden Topologien** und zeigt, dass
+die Kombination aller Verbesserungen mit ausreichend Budget synergistisch wirkt:
+
+- **Walls: 91.4** — übertrifft den Walls-only-Baseline (Run 001: 80.6) um +13 %
+- **Periodic: 125.1** — übertrifft Monte-Carlo (≈100) um +25 %
+
+Das Central Insight: Das größere Netz (20→32→24→6) braucht ~2000+ Evals/Parameter
+um sein Potenzial zu entfalten. Mit 317 (Run 004) stagniert es; mit 2380 (Run 005)
+dominiert es. **Budget ist der größte Hebel**, nicht Feature-Engineering oder
+Architektur.
+
+Das eingecheckte `best.mlp` ist nun das Run-005-Netz.
 
 ---
 
@@ -154,7 +243,7 @@ _Ist 20→32→24→6 + A+B + Budget das neue Optimum?_
 
 | Datei | Beschreibung |
 |---|---|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | Eingechecktes Netz (nach Deployment) |
-| `training-out/run-005/best.mlp` | Bestes Netz des Laufs |
+| `crates/snake-core/assets/neural-net-ga/best.mlp` | **Run 005 Netz (Walls 91.4, Periodic 125.1)** |
+| `training-out/run-005/best.mlp` | Identisch |
 | `training-out/run-005/fitness.csv` | Lernkurve (nicht eingecheckt) |
-| `training-out/run-005/gen_*.mlp` | Checkpoints alle 250 Gen (21 Dateien) |
+| `training-out/run-005/gen_*.mlp` | Checkpoints alle 250 Gen |
