@@ -5,6 +5,7 @@ members = [
     "crates/snake-app",
     "crates/snake-train",
     "crates/snake-server",
+    "crates/snake-py",
 ]
 
 [workspace.package]

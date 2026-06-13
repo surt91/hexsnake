@@ -8,6 +8,9 @@ dist/
 python/.venv/
 __pycache__/
 *.pyc
+# maturin-built extension (compiled into the editable install)
+*.so
+*.pyd
 
 # E2E
 e2e/node_modules/

@@ -277,7 +277,7 @@ Ziel: ein Strategie-Dropdown mit GA/ES, NEAT, DQN und PPO (inkl.
 CNN-Observation), die im Benchmark gegeneinander antreten (vgl. Konzept §3.8).
 Behavior Cloning wurde bewusst weggelassen.
 
-- [ ] **NEAT** in `snake-train` (Rust-Track, kein Gradient nötig) —
+- [x] **NEAT** in `snake-train` (Rust-Track, kein Gradient nötig) —
       Netzstruktur wächst während des Trainings.
 - [ ] **PyO3-Bindings**: `snake-core` via maturin als Python-Modul
       (Gym-artiges Env-Interface: `reset`/`step`/Observation), Python-Setup

@@ -30,6 +30,11 @@ pub fn default_dims() -> Vec<usize> {
 /// training run — see `docs/training/neural-net-ga.md`.
 pub const EMBEDDED_WEIGHTS: &str = include_str!("../../assets/neural-net-ga/best.mlp");
 
+/// Embedded DQN policy weights (stable-baselines3 export, `.mlp` format).
+pub const EMBEDDED_DQN: &str = include_str!("../../assets/dqn/policy.mlp");
+/// Embedded PPO policy weights (stable-baselines3 export, `.mlp` format).
+pub const EMBEDDED_PPO: &str = include_str!("../../assets/ppo/policy.mlp");
+
 /// MLP-driven strategy: features in, one score per (relative) direction
 /// out, fatal moves masked.
 pub struct NeuralNet {
@@ -45,9 +50,21 @@ impl NeuralNet {
         }
     }
 
-    /// The checked-in embedded network.
+    /// The checked-in embedded network (GA/ES).
     pub fn embedded() -> Self {
         Self::new(Mlp::from_text(EMBEDDED_WEIGHTS).expect("embedded weights must parse"))
+    }
+
+    /// The embedded DQN policy exported from stable-baselines3
+    /// (placeholder until the user trains — see `docs/training/dqn.md`).
+    pub fn embedded_dqn() -> Self {
+        Self::new(Mlp::from_text(EMBEDDED_DQN).expect("embedded DQN weights must parse"))
+    }
+
+    /// The embedded PPO policy exported from stable-baselines3
+    /// (placeholder until the user trains — see `docs/training/ppo.md`).
+    pub fn embedded_ppo() -> Self {
+        Self::new(Mlp::from_text(EMBEDDED_PPO).expect("embedded PPO weights must parse"))
     }
 }
 
@@ -131,8 +148,13 @@ mod tests {
 
     #[test]
     fn embedded_weights_parse_and_match_architecture() {
-        let net = NeuralNet::embedded();
-        assert_eq!(net.mlp.dims(), default_dims());
+        for net in [
+            NeuralNet::embedded(),
+            NeuralNet::embedded_dqn(),
+            NeuralNet::embedded_ppo(),
+        ] {
+            assert_eq!(net.mlp.dims(), default_dims());
+        }
     }
 
     #[test]

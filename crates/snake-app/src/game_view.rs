@@ -97,6 +97,8 @@ fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<B
         StrategyChoice::MonteCarlo => Some(Box::new(MonteCarlo::new(seed))),
         StrategyChoice::NeuralNet => Some(Box::new(NeuralNet::embedded())),
         StrategyChoice::Neat => Some(Box::new(NeatNet::embedded())),
+        StrategyChoice::Dqn => Some(Box::new(NeuralNet::embedded_dqn())),
+        StrategyChoice::Ppo => Some(Box::new(NeuralNet::embedded_ppo())),
     }
 }
 

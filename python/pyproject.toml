@@ -1,0 +1,27 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "hexsnake-rl"
+version = "0.1.0"
+description = "Gym env + DQN/PPO training for HexSnake (snake-core via PyO3)"
+requires-python = ">=3.9"
+dependencies = [
+    "gymnasium>=0.29",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Heavy RL stack (pulls in torch); kept optional so the env + roundtrip
+# verifier work without it.
+train = ["stable-baselines3>=2.3"]
+
+[tool.maturin]
+# The Rust extension lives in the cargo workspace; build it with the PyO3
+# bindings enabled. The compiled module is placed inside the pure-Python
+# `hexsnake_rl` package as `_native`.
+manifest-path = "../crates/snake-py/Cargo.toml"
+features = ["python"]
+module-name = "hexsnake_rl._native"
+python-source = "."

@@ -1,0 +1,22 @@
+[package]
+name = "snake-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# Compiled module installed as `hexsnake_rl._native` (see python/pyproject).
+name = "_native"
+# `rlib` lets the pure-Rust env logic be unit-tested; `cdylib` is the Python
+# extension module built by maturin.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+snake-core = { path = "../snake-core" }
+# The PyO3 bindings are optional so `cargo test --workspace` builds and tests
+# the pure-Rust env without needing a Python toolchain. maturin enables the
+# `python` feature (see pyproject.toml).
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"], optional = true }
+
+[features]
+python = ["dep:pyo3"]

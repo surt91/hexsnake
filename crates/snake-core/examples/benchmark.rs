@@ -39,6 +39,8 @@ fn main() {
         ),
         ("Neural Net", Box::new(|_| Box::new(NeuralNet::embedded()))),
         ("NEAT", Box::new(|_| Box::new(NeatNet::embedded()))),
+        ("DQN", Box::new(|_| Box::new(NeuralNet::embedded_dqn()))),
+        ("PPO", Box::new(|_| Box::new(NeuralNet::embedded_ppo()))),
     ];
 
     println!("{games} Partien je Strategie, max. {max_ticks} Ticks, Feld 16×12\n");
