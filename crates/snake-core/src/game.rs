@@ -48,6 +48,8 @@ pub struct GameState {
     board: Board,
     /// Snake cells, head at the front, tail at the back.
     snake: VecDeque<Offset>,
+    /// Flat occupancy map (row-major) for O(1) `occupies()` checks.
+    occupied: Vec<bool>,
     direction: Direction,
     input_queue: VecDeque<Direction>,
     food: Offset,
@@ -72,9 +74,15 @@ impl GameState {
             .collect();
         debug_assert!(snake.iter().all(|c| board.contains(*c)));
 
+        let mut occupied = vec![false; board.num_cells()];
+        for cell in &snake {
+            occupied[Self::cell_index_for(&board, *cell)] = true;
+        }
+
         let mut state = Self {
             board,
             snake,
+            occupied,
             direction: Direction::North,
             input_queue: VecDeque::new(),
             food: Offset::new(0, 0), // placeholder, respawned below
@@ -129,7 +137,11 @@ impl GameState {
     }
 
     pub fn occupies(&self, cell: Offset) -> bool {
-        self.snake.contains(&cell)
+        self.occupied[Self::cell_index_for(&self.board, cell)]
+    }
+
+    fn cell_index_for(board: &Board, cell: Offset) -> usize {
+        (cell.row * board.width + cell.col) as usize
     }
 
     /// Buffer a direction change for the next ticks. Inputs beyond the queue
@@ -178,18 +190,20 @@ impl GameState {
         // The tail cell vacates this tick unless the snake grows, so moving
         // onto it is only fatal when growing.
         let tail = self.tail();
-        let hits_body = self.snake.contains(&next) && (grows || next != tail);
+        let hits_body = self.occupies(next) && (grows || next != tail);
         if hits_body {
             self.status = Status::GameOver;
             return;
         }
 
+        self.occupied[Self::cell_index_for(&self.board, next)] = true;
         self.snake.push_front(next);
         if grows {
             self.score += 1;
             self.respawn_food();
         } else {
-            self.snake.pop_back();
+            let removed = self.snake.pop_back().expect("snake is never empty");
+            self.occupied[Self::cell_index_for(&self.board, removed)] = false;
         }
         self.ticks += 1;
     }
@@ -197,18 +211,23 @@ impl GameState {
     /// Place food on a uniformly random free cell, deterministically derived
     /// from the seeded RNG. Sets [`Status::Won`] if the board is full.
     fn respawn_food(&mut self) {
-        // Row-major order keeps this independent of any hash-map iteration
-        // order, which the determinism guarantee relies on.
-        let free: Vec<Offset> = self
-            .board
-            .cells()
-            .filter(|c| !self.snake.contains(c))
-            .collect();
-        if free.is_empty() {
-            self.status = Status::Won;
-            return;
+        // Row-major iteration keeps this independent of hash-map order (determinism).
+        // Reservoir sampling avoids collecting a Vec: each free cell wins with
+        // probability 1/k, yielding a uniform draw in one pass.
+        let mut chosen: Option<Offset> = None;
+        let mut count = 0u32;
+        for cell in self.board.cells() {
+            if !self.occupied[Self::cell_index_for(&self.board, cell)] {
+                count += 1;
+                if self.rng.random_range(0..count) == 0 {
+                    chosen = Some(cell);
+                }
+            }
         }
-        self.food = free[self.rng.random_range(0..free.len())];
+        match chosen {
+            None => self.status = Status::Won,
+            Some(cell) => self.food = cell,
+        }
     }
 }
 

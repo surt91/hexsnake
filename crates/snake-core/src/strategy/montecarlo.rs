@@ -25,6 +25,8 @@ pub struct MonteCarlo {
     rollouts: usize,
     horizon: u32,
     debug: StrategyDebug,
+    /// Reusable buffer for flood_fill to avoid per-rollout heap allocation.
+    fill_buf: Vec<super::Offset>,
 }
 
 impl MonteCarlo {
@@ -39,6 +41,7 @@ impl MonteCarlo {
             rollouts,
             horizon,
             debug: StrategyDebug::default(),
+            fill_buf: Vec::new(),
         }
     }
 
@@ -61,9 +64,8 @@ impl MonteCarlo {
         let food = f64::from(sim.score() - state.score());
         let mut reward = food * FOOD_REWARD + f64::from(survived) * SURVIVAL_REWARD_PER_TICK;
         if sim.status() == Status::Running {
-            let mut reachable = Vec::new();
-            flood_fill(&sim, sim.head(), &mut reachable);
-            reward += SPACE_REWARD * reachable.len() as f64 / sim.board().num_cells() as f64;
+            flood_fill(&sim, sim.head(), &mut self.fill_buf);
+            reward += SPACE_REWARD * self.fill_buf.len() as f64 / sim.board().num_cells() as f64;
         }
         reward
     }
