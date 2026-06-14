@@ -33,6 +33,10 @@ def main():
     ap.add_argument("--out", default="dqn.mlp")
     args = ap.parse_args()
 
+    # Pin to one BLAS thread: the net is tiny, and when several seeds run in
+    # parallel (see parallel_train.py) this avoids oversubscribing the cores.
+    torch.set_num_threads(1)
+
     env = HexSnakeGym(
         args.width, args.height, args.boundary, args.max_ticks, args.observation
     )

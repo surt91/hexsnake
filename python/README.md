@@ -56,6 +56,24 @@ uv run --extra train python train_dqn.py --timesteps 2000000 --out dqn.mlp
 Reward shaping (in `crates/snake-py/src/env.rs`): +1 eating, +2 winning,
 −1 dying, ±0.1 × change in (torus-aware) food distance, −0.005 per step.
 
+## Using all cores
+
+PPO uses `SubprocVecEnv` automatically when `--n-envs > 1` (one env process
+per core, sidestepping the GIL). **But** HexSnake's env and net are tiny, so a
+single run is dominated by the single-threaded learner — env-level
+parallelism barely changes wall-clock. The effective way to use every core is
+to run **many independent seeds in parallel** and keep the best:
+
+```bash
+uv run --extra train python parallel_train.py --algo ppo --runs 8 \
+    --timesteps 1000000 --boundary mixed
+uv run --extra train python parallel_train.py --algo dqn --runs 8 --timesteps 700000
+```
+
+Each seed is a separate process pinned to one thread; benchmark the resulting
+`*.mlp` and embed the best. (DQN is single-env by design, so multi-seed is the
+*only* way it scales across cores.)
+
 ## Observations
 
 - `observation="rays"` (default): the 20 heading-relative sensor features —

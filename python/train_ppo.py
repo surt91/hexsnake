@@ -12,7 +12,7 @@ import argparse
 
 import torch
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from hexsnake_rl import HexSnakeGym, export_mlp, from_ppo
 
@@ -44,7 +44,15 @@ def main():
     ap.add_argument("--out", default="ppo.mlp")
     args = ap.parse_args()
 
-    env = DummyVecEnv([make_env(args, i) for i in range(args.n_envs)])
+    # The MLP is tiny, so intra-op torch threads gain nothing and would only
+    # oversubscribe the cores once several env subprocesses run. Parallelism
+    # comes from SubprocVecEnv instead.
+    torch.set_num_threads(1)
+    # DummyVecEnv steps all envs serially in one process (single core, GIL-
+    # bound); SubprocVecEnv runs each env in its own process for true
+    # multi-core rollout collection. Use ~one env per physical core.
+    vec_cls = SubprocVecEnv if args.n_envs > 1 else DummyVecEnv
+    env = vec_cls([make_env(args, i) for i in range(args.n_envs)])
     if args.observation == "grid":
         # CNN comparison run: not embeddable in WASM, so save the SB3 model
         # instead of exporting the .mlp format.
