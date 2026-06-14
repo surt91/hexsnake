@@ -165,8 +165,11 @@ impl AlphaZeroLite {
                     // Dense per-step reward folded into the edge value, so the
                     // search prefers food-ward moves even with an untrained
                     // value head (otherwise the policy collapses to circling).
+                    // Eat bonus raised to 0.5 (was 0.3) so MCTS more actively
+                    // pursues food while games stay tractable (1.0 caused the snake
+                    // to grow so long that state clones dominated MCTS cost).
                     let shaped = if ate {
-                        0.3
+                        0.5
                     } else if !terminal {
                         let d = s.board().distance(s.head(), s.food());
                         0.1 * (dist_before as f32 - d as f32)
@@ -298,9 +301,9 @@ pub fn self_play(
         let dir = state.direction().rotated_cw(action as u8);
         state.tick(Some(dir));
 
-        let mut reward = -0.005; // small living cost
+        let mut reward = -0.01; // living cost — stronger pressure to seek food
         if state.score() > score_before {
-            reward += 1.0; // ate
+            reward += 3.0; // ate — 3× death-penalty to strongly prioritize food
         } else {
             let dist = state.board().distance(state.head(), state.food());
             reward += 0.1 * (dist_before as f32 - dist as f32);
