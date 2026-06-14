@@ -39,6 +39,8 @@ def export_mlp(path: str, layers: Sequence[Layer]) -> None:
     # 16 params per line for readability; float() repr round-trips f32 exactly.
     for i in range(0, len(params), 16):
         lines.append(" ".join(repr(float(p)) for p in params[i : i + 16]))
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

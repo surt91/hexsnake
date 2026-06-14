@@ -230,6 +230,40 @@ fn mutate(genome: &mut Genome, innov: &mut Innovations, rng: &mut Pcg64, cfg: &N
     }
 }
 
+/// Kahn's topological-sort check on the genome's enabled connections.
+/// Returns `true` iff the enabled sub-graph is acyclic (feed-forward).
+fn is_feed_forward(genome: &Genome) -> bool {
+    let n = genome.nodes.len();
+    let index: HashMap<u32, usize> = genome
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, nd)| (nd.id, i))
+        .collect();
+    let mut in_deg = vec![0usize; n];
+    for c in genome.conns.iter().filter(|c| c.enabled) {
+        if let Some(&t) = index.get(&c.to) {
+            in_deg[t] += 1;
+        }
+    }
+    let mut queue: Vec<usize> = (0..n).filter(|&i| in_deg[i] == 0).collect();
+    let mut head = 0;
+    while head < queue.len() {
+        let nd = queue[head];
+        head += 1;
+        let nd_id = genome.nodes[nd].id;
+        for c in genome.conns.iter().filter(|c| c.enabled && c.from == nd_id) {
+            if let Some(&t) = index.get(&c.to) {
+                in_deg[t] -= 1;
+                if in_deg[t] == 0 {
+                    queue.push(t);
+                }
+            }
+        }
+    }
+    queue.len() == n
+}
+
 /// Crossover aligned by innovation: matching genes are inherited at random,
 /// disjoint/excess genes come from the fitter parent (`a`).
 fn crossover(a: &Genome, b: &Genome, rng: &mut Pcg64) -> Genome {
@@ -268,11 +302,19 @@ fn crossover(a: &Genome, b: &Genome, rng: &mut Pcg64) -> Genome {
         }
     }
 
-    Genome {
+    let child = Genome {
         inputs: a.inputs,
         outputs: a.outputs,
         nodes,
         conns,
+    };
+    // Crossover can re-enable previously disabled connections (25 % chance),
+    // which may introduce cycles. Fall back to the fitter parent when that
+    // happens so the population stays feed-forward.
+    if is_feed_forward(&child) {
+        child
+    } else {
+        a.clone()
     }
 }
 
