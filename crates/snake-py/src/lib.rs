@@ -16,6 +16,9 @@ mod bindings {
     use crate::env::{Env, ObsKind, ACTIONS};
     use snake_core::BoundaryMode;
 
+    /// One self-play row returned to Python: (features, policy_target, value).
+    type AzSampleRow = (Vec<f32>, Vec<f32>, f32);
+
     /// Gym-like environment. Actions are the six heading-relative directions.
     #[pyclass(name = "HexSnakeEnv")]
     struct PyEnv {
@@ -91,10 +94,59 @@ mod bindings {
         Ok(mlp.forward(&input))
     }
 
+    /// Play one AlphaZero-light self-play game in Rust and return training
+    /// samples `(features, policy_target, value_target)`.
+    ///
+    /// `params` are the flat weights of the 7-output net `[20, 32, 24, 7]`
+    /// (same layout as the `.mlp` format). The MCTS is the exact same search
+    /// `AlphaZeroLite` uses at inference, so the policy targets need no second
+    /// implementation. The GIL is released during the (pure-Rust) game, so
+    /// many self-play games can run in parallel from Python threads.
+    #[pyfunction]
+    #[pyo3(signature = (params, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000))]
+    #[allow(clippy::too_many_arguments)]
+    fn az_selfplay(
+        py: Python<'_>,
+        params: Vec<f32>,
+        boundary: &str,
+        width: i32,
+        height: i32,
+        sims: u32,
+        temperature: f32,
+        seed: u64,
+        max_ticks: u64,
+    ) -> PyResult<Vec<AzSampleRow>> {
+        use snake_core::nn::{Mlp, FEATURE_COUNT};
+        use snake_core::strategy::{self_play, AZ_OUTPUTS};
+
+        let boundary = match boundary {
+            "walls" => BoundaryMode::Walls,
+            "torus" | "periodic" => BoundaryMode::Periodic,
+            other => return Err(PyValueError::new_err(format!("bad boundary: {other:?}"))),
+        };
+        let dims = [FEATURE_COUNT, 32, 24, AZ_OUTPUTS];
+        let mlp = Mlp::from_params(&dims, params).map_err(PyValueError::new_err)?;
+        let config = snake_core::Config {
+            width,
+            height,
+            boundary,
+            seed: 0,
+        };
+        // The game is pure Rust and touches no Python state → release the GIL
+        // so threaded callers fan out across cores.
+        let samples =
+            py.allow_threads(|| self_play(&mlp, config, sims, temperature, seed, max_ticks));
+        Ok(samples
+            .into_iter()
+            .map(|s| (s.features, s.policy.to_vec(), s.value))
+            .collect())
+    }
+
     #[pymodule]
     fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyEnv>()?;
         m.add_function(wrap_pyfunction!(mlp_forward, m)?)?;
+        m.add_function(wrap_pyfunction!(az_selfplay, m)?)?;
         m.add("NUM_ACTIONS", ACTIONS)?;
         Ok(())
     }

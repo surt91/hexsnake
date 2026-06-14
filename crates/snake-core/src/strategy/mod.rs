@@ -9,7 +9,7 @@ mod montecarlo;
 mod planner;
 mod space;
 
-pub use alphazero::{AlphaZeroLite, AZ_OUTPUTS};
+pub use alphazero::{self_play, AlphaZeroLite, AzSample, AZ_OUTPUTS};
 pub use chaos::ChaosWalker;
 pub use greedy::Greedy;
 pub use hamilton::{serpentine_cycle, HamiltonRider};

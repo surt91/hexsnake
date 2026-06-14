@@ -371,3 +371,29 @@ dass man es Monate später noch versteht.
   zufällig eine stärkere Initialpopulation, aber das sagt nichts über das
   Endresultat. Nur gleiche Generation = gleiche Eval-Boards → direkt
   vergleichbar.
+
+## Phase 9 — AlphaZero-light auf Gradienten (Nachtrag)
+
+- **Eine MCTS, kein Sync-Problem**: Statt die Suche in Python für das Training
+  und in Rust für die Inferenz doppelt zu pflegen (Divergenz-Risiko), läuft
+  das komplette Self-Play in Rust (`az_selfplay`) — exakt dieselbe Suche wie
+  die Inferenz. Python bekommt nur (Features, MCTS-Verteilung, Return) und
+  macht den Gradientenschritt. Der GIL wird während der reinen Rust-Suche
+  freigegeben → ein ThreadPool fächert Self-Play über alle Cores (user 4m42
+  bei real 37s).
+- **Cold-Start-Falle**: Erster Versuch lernte, *ewig im Kreis zu fahren*
+  (Score 0, Ticks am Limit). Ursache: Bei sparsamen Fress-Reward und zufällig
+  initialisiertem Value findet die 24-Sim-Suche nie Futter; die
+  Besuchsverteilung bleibt diffus, die Policy lernt „irgendein sicherer Zug".
+  Dichteres Reward im *Trainings-Target* allein half nicht — die **Suche
+  selbst** brauchte das Signal.
+- **Reward-aware Search als Fix**: Die MCTS-Kantenwerte enthalten jetzt das
+  dichte Schritt-Reward (Futter-Annäherung + Fress-Bonus), nicht nur den
+  Netz-Value am Blatt. Damit steuert die Suche schon mit untrainiertem Netz
+  Futter an, die Policy-Targets werden informativ — und das Gradienten-Netz
+  frisst plötzlich (Walls 28 / Torus 54, über der GA-Variante 17/52). Lehre:
+  Bei AlphaZero für eine Sparse-Reward-Aufgabe muss das dichte Signal *in der
+  Suche* stecken, nicht nur im Lernziel.
+- **7-Output-Roundtrip**: Der Export-Self-Check (Torch-Raw == Rust
+  `mlp_forward`, Fehler ~1e-7) fängt Layout-Fehler des Policy+Value-Kopfs ab,
+  bevor ein Trainingslauf verschwendet wird.

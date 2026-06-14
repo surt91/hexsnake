@@ -4,9 +4,16 @@
 //! The network is one MLP with 7 outputs: six policy logits (heading-relative
 //! directions, like the other net strategies) and one value. PUCT selection
 //! uses the policy as priors; leaves are evaluated by the value head instead
-//! of rolling out random games. The net is trained gradient-free by the GA
-//! trainer (`snake-train az`) — "self-play" here means the net guides its own
-//! lookahead and we evolve it on the resulting game scores.
+//! of rolling out random games. Edge values also fold in a dense per-step
+//! reward (food-approach shaping + eat bonus), so the search prefers
+//! food-ward moves even with an untrained value head — without it the policy
+//! collapses to safe circling.
+//!
+//! Training: the **gradient** trainer (`python/train_alphazero.py`) runs
+//! self-play with [`self_play`] (this exact search), then fits the net by
+//! backprop — policy loss against the MCTS visit distribution, value loss
+//! against the discounted return. A gradient-free GA fallback also exists
+//! (`snake-train az`, no Python needed). Inference stays pure Rust/WASM.
 
 use crate::coords::Direction;
 use crate::game::{GameState, Status};
@@ -59,13 +66,13 @@ impl AlphaZeroLite {
         }
     }
 
-    /// The checked-in embedded policy/value net (smoke artifact until the
-    /// real training — see `docs/training/alphazero.md`). The search budget
-    /// matches the one the embedded net was trained with: the value head is
-    /// only calibrated for that depth, and more sims would over-trust it.
+    /// The checked-in embedded policy/value net (see
+    /// `docs/training/alphazero/guide.md`). The search budget matches the one
+    /// the embedded net was trained with — the value head is calibrated for
+    /// that depth.
     pub fn embedded() -> Self {
         let mlp = Mlp::from_text(EMBEDDED_AZ).expect("embedded AlphaZero net must parse");
-        Self::new(mlp, 16)
+        Self::new(mlp, 24)
     }
 
     /// Policy priors (softmax over the five non-reverse actions) and a value
@@ -141,7 +148,12 @@ impl AlphaZeroLite {
                 path.push((idx, a));
                 let child = arena[idx].child[a];
                 if child < 0 {
-                    // Expand: apply the action to a cloned state.
+                    // Expand: apply the action to a cloned state. Distance to
+                    // the food before the move drives the approach shaping.
+                    let dist_before = {
+                        let p = &arena[idx].state;
+                        p.board().distance(p.head(), p.food())
+                    };
                     let mut s = arena[idx].state.clone();
                     let dir = s.direction().rotated_cw(a as u8);
                     let score_before = s.score();
@@ -150,6 +162,17 @@ impl AlphaZeroLite {
                     let new_idx = arena.len();
                     let ate = s.score() > score_before;
                     let won = s.status() == Status::Won;
+                    // Dense per-step reward folded into the edge value, so the
+                    // search prefers food-ward moves even with an untrained
+                    // value head (otherwise the policy collapses to circling).
+                    let shaped = if ate {
+                        0.3
+                    } else if !terminal {
+                        let d = s.board().distance(s.head(), s.food());
+                        0.1 * (dist_before as f32 - d as f32)
+                    } else {
+                        0.0
+                    };
                     arena.push(Node::leaf(s, terminal));
                     arena[idx].child[a] = new_idx as i32;
                     value = if terminal {
@@ -162,8 +185,7 @@ impl AlphaZeroLite {
                         let (p, v) = self.evaluate(&arena[new_idx].state);
                         arena[new_idx].priors = p;
                         arena[new_idx].expanded = true;
-                        // A small bonus for eating keeps the search hungry.
-                        (v + if ate { 0.3 } else { 0.0 }).clamp(-1.0, 1.0)
+                        (v + shaped).clamp(-1.0, 1.0)
                     };
                     break;
                 }
@@ -218,6 +240,133 @@ impl Strategy for AlphaZeroLite {
 /// Embedded AlphaZero-light policy/value net (`.mlp`, 7 outputs).
 pub const EMBEDDED_AZ: &str = include_str!("../../assets/alphazero/best.mlp");
 
+/// One self-play training sample for gradient training (Python side).
+#[derive(Debug, Clone)]
+pub struct AzSample {
+    /// Sensor features at the state.
+    pub features: Vec<f32>,
+    /// MCTS policy target: normalized visit counts over the six relative
+    /// actions (the reverse action stays 0).
+    pub policy: [f32; 6],
+    /// Value target: tanh of the discounted return from this state.
+    pub value: f32,
+}
+
+/// Discount for the self-play value target.
+const SELFPLAY_GAMMA: f32 = 0.99;
+
+/// Play one self-play game with `mlp` driving the MCTS and return training
+/// samples. Moves are sampled from the visit counts with `temperature`
+/// (0 ⇒ greedy) for exploration. Uses the *same* search as inference, so the
+/// policy targets match what `AlphaZeroLite` actually does — no second MCTS to
+/// keep in sync.
+pub fn self_play(
+    mlp: &Mlp,
+    config: crate::game::Config,
+    sims: u32,
+    temperature: f32,
+    seed: u64,
+    max_ticks: u64,
+) -> Vec<AzSample> {
+    use rand::SeedableRng as _;
+
+    let az = AlphaZeroLite::new(mlp.clone(), sims);
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let mut state = GameState::new(config);
+
+    let mut steps: Vec<(Vec<f32>, [f32; 6])> = Vec::new();
+    let mut rewards: Vec<f32> = Vec::new();
+
+    while state.status() == Status::Running && state.ticks() < max_ticks {
+        let visits = az.search(&state);
+        let total: u32 = visits.iter().sum();
+        let mut policy = [0.0f32; 6];
+        if total > 0 {
+            for (a, &v) in visits.iter().enumerate() {
+                policy[a] = v as f32 / total as f32;
+            }
+        }
+        steps.push((features(&state), policy));
+
+        let action = sample_action(&visits, temperature, &mut rng);
+        let score_before = state.score();
+        // Food-approach shaping needs the distance before the move (mirrors
+        // the RL env reward, so the value target carries a dense navigation
+        // signal — without it the search never discovers food and the policy
+        // collapses to safe circling).
+        let dist_before = state.board().distance(state.head(), state.food());
+        let dir = state.direction().rotated_cw(action as u8);
+        state.tick(Some(dir));
+
+        let mut reward = -0.005; // small living cost
+        if state.score() > score_before {
+            reward += 1.0; // ate
+        } else {
+            let dist = state.board().distance(state.head(), state.food());
+            reward += 0.1 * (dist_before as f32 - dist as f32);
+        }
+        match state.status() {
+            Status::GameOver => reward -= 1.0,
+            Status::Won => reward += 2.0,
+            Status::Running => {}
+        }
+        rewards.push(reward);
+    }
+
+    // Discounted returns → tanh value targets (computed back-to-front).
+    let mut g = 0.0f32;
+    let mut values = vec![0.0f32; rewards.len()];
+    for t in (0..rewards.len()).rev() {
+        g = rewards[t] + SELFPLAY_GAMMA * g;
+        values[t] = g.tanh();
+    }
+
+    steps
+        .into_iter()
+        .zip(values)
+        .map(|((features, policy), value)| AzSample {
+            features,
+            policy,
+            value,
+        })
+        .collect()
+}
+
+/// Sample an action from visit counts weighted by `count^(1/temperature)`.
+/// `temperature <= 0` selects the most-visited action (greedy).
+fn sample_action(visits: &[u32; 6], temperature: f32, rng: &mut rand_pcg::Pcg64) -> usize {
+    use rand::Rng as _;
+    if temperature <= 1e-3 {
+        return visits
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &v)| v)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+    }
+    let inv_t = 1.0 / temperature as f64;
+    let mut weights = [0.0f64; 6];
+    let mut sum = 0.0;
+    for (a, &v) in visits.iter().enumerate() {
+        if v > 0 {
+            let w = (v as f64).powf(inv_t);
+            weights[a] = w;
+            sum += w;
+        }
+    }
+    if sum <= 0.0 {
+        return 0;
+    }
+    let mut pick = rng.random::<f64>() * sum;
+    for (a, &w) in weights.iter().enumerate() {
+        pick -= w;
+        if pick <= 0.0 {
+            return a;
+        }
+    }
+    5
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +376,27 @@ mod tests {
     fn embedded_net_has_value_head() {
         let az = AlphaZeroLite::embedded();
         assert_eq!(*az.mlp.dims().last().unwrap(), AZ_OUTPUTS);
+    }
+
+    #[test]
+    fn self_play_yields_well_formed_samples() {
+        use crate::nn::FEATURE_COUNT;
+        let mlp = AlphaZeroLite::embedded().mlp;
+        let config = Config {
+            seed: 5,
+            ..Config::default()
+        };
+        let a = self_play(&mlp, config, 12, 1.0, 99, 500);
+        let b = self_play(&mlp, config, 12, 1.0, 99, 500);
+        assert!(!a.is_empty());
+        assert_eq!(a.len(), b.len(), "same seed ⇒ identical self-play");
+        for s in &a {
+            assert_eq!(s.features.len(), FEATURE_COUNT);
+            assert!((-1.0..=1.0).contains(&s.value));
+            assert_eq!(s.policy[REVERSE], 0.0, "reverse never gets visits");
+            let sum: f32 = s.policy.iter().sum();
+            assert!((sum - 1.0).abs() < 1e-4 || sum == 0.0);
+        }
     }
 
     #[test]
