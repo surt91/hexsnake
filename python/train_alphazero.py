@@ -95,7 +95,14 @@ def main():
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default="az.mlp")
+    ap.add_argument(
+        "--best-out",
+        default=None,
+        help="path for the best-checkpoint (by avg_game_len); defaults to <out>.best.mlp",
+    )
     args = ap.parse_args()
+
+    best_out = args.best_out or (args.out.removesuffix(".mlp") + ".best.mlp")
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -106,6 +113,9 @@ def main():
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
     buffer = deque(maxlen=args.buffer)
     seed = args.seed * 1_000_000
+
+    best_game_len = 0.0
+    best_iter = -1
 
     for it in range(args.iterations):
         rows = collect_self_play(net, args, seed)
@@ -125,13 +135,21 @@ def main():
                 last = train_step(net, optim, (feats[idx], policy_t[idx], value_t[idx]))
 
         avg_game_len = len(rows) / args.games_per_iter
+        is_best = avg_game_len > best_game_len
+        if is_best:
+            best_game_len = avg_game_len
+            best_iter = it
+            net.export(best_out)
+
         print(
             f"iter {it:3d}  buffer {n:6d}  ~game_len {avg_game_len:6.1f}  "
             f"policy_loss {last[0]:.3f}  value_loss {last[1]:.3f}"
+            + ("  [best]" if is_best else "")
         )
 
     net.export(args.out)
     print(f"exported policy/value net -> {args.out}")
+    print(f"best checkpoint (iter {best_iter}, game_len {best_game_len:.1f}) -> {best_out}")
 
 
 if __name__ == "__main__":
