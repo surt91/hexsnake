@@ -57,6 +57,7 @@ def collect_self_play(net, args, base_seed):
         return az_selfplay(
             params, boundary, 16, 12, args.sims, args.temperature,
             base_seed + i, args.max_ticks,
+            args.eat_bonus, args.sp_eat,
         )
 
     rows = []
@@ -121,6 +122,10 @@ def main():
     ap.add_argument("--buffer", type=int, default=60000)
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--eat-bonus", type=float, default=0.3,
+                    help="MCTS edge reward for eating food (default 0.3)")
+    ap.add_argument("--sp-eat", type=float, default=1.0,
+                    help="self-play return bonus for eating food (default 1.0)")
     ap.add_argument("--out", default="az.mlp")
     ap.add_argument(
         "--best-out",

@@ -30,6 +30,8 @@ const C_PUCT: f32 = 1.4;
 pub struct AlphaZeroLite {
     mlp: Mlp,
     sims: u32,
+    /// MCTS edge reward for eating food (default 0.3).
+    eat_bonus: f32,
     debug: StrategyDebug,
 }
 
@@ -59,9 +61,14 @@ impl Node {
 
 impl AlphaZeroLite {
     pub fn new(mlp: Mlp, sims: u32) -> Self {
+        Self::with_eat_bonus(mlp, sims, 0.3)
+    }
+
+    pub fn with_eat_bonus(mlp: Mlp, sims: u32, eat_bonus: f32) -> Self {
         Self {
             mlp,
             sims,
+            eat_bonus,
             debug: StrategyDebug::default(),
         }
     }
@@ -166,7 +173,7 @@ impl AlphaZeroLite {
                     // search prefers food-ward moves even with an untrained
                     // value head (otherwise the policy collapses to circling).
                     let shaped = if ate {
-                        0.3
+                        self.eat_bonus
                     } else if !terminal {
                         let d = s.board().distance(s.head(), s.food());
                         0.1 * (dist_before as f32 - d as f32)
@@ -268,9 +275,23 @@ pub fn self_play(
     seed: u64,
     max_ticks: u64,
 ) -> Vec<AzSample> {
+    self_play_with_rewards(mlp, config, sims, temperature, seed, max_ticks, 0.3, 1.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn self_play_with_rewards(
+    mlp: &Mlp,
+    config: crate::game::Config,
+    sims: u32,
+    temperature: f32,
+    seed: u64,
+    max_ticks: u64,
+    eat_bonus: f32,
+    sp_eat: f32,
+) -> Vec<AzSample> {
     use rand::SeedableRng as _;
 
-    let az = AlphaZeroLite::new(mlp.clone(), sims);
+    let az = AlphaZeroLite::with_eat_bonus(mlp.clone(), sims, eat_bonus);
     let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
     let mut state = GameState::new(config);
 
@@ -300,7 +321,7 @@ pub fn self_play(
 
         let mut reward = -0.005;
         if state.score() > score_before {
-            reward += 1.0;
+            reward += sp_eat;
         } else {
             let dist = state.board().distance(state.head(), state.food());
             reward += 0.1 * (dist_before as f32 - dist as f32);

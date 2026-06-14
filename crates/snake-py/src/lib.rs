@@ -103,7 +103,7 @@ mod bindings {
     /// implementation. The GIL is released during the (pure-Rust) game, so
     /// many self-play games can run in parallel from Python threads.
     #[pyfunction]
-    #[pyo3(signature = (params, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000))]
+    #[pyo3(signature = (params, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000, eat_bonus=0.3, sp_eat=1.0))]
     #[allow(clippy::too_many_arguments)]
     fn az_selfplay(
         py: Python<'_>,
@@ -115,9 +115,11 @@ mod bindings {
         temperature: f32,
         seed: u64,
         max_ticks: u64,
+        eat_bonus: f32,
+        sp_eat: f32,
     ) -> PyResult<Vec<AzSampleRow>> {
         use snake_core::nn::{Mlp, FEATURE_COUNT};
-        use snake_core::strategy::{self_play, AZ_OUTPUTS};
+        use snake_core::strategy::{self_play_with_rewards, AZ_OUTPUTS};
 
         let boundary = match boundary {
             "walls" => BoundaryMode::Walls,
@@ -134,8 +136,18 @@ mod bindings {
         };
         // The game is pure Rust and touches no Python state → release the GIL
         // so threaded callers fan out across cores.
-        let samples =
-            py.allow_threads(|| self_play(&mlp, config, sims, temperature, seed, max_ticks));
+        let samples = py.allow_threads(|| {
+            self_play_with_rewards(
+                &mlp,
+                config,
+                sims,
+                temperature,
+                seed,
+                max_ticks,
+                eat_bonus,
+                sp_eat,
+            )
+        });
         Ok(samples
             .into_iter()
             .map(|s| (s.features, s.policy.to_vec(), s.value))
