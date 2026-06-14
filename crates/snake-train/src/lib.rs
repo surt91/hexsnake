@@ -124,7 +124,7 @@ fn evolve(
                         },
                         config.max_ticks,
                     );
-                    total += f64::from(result.score) * 100.0 + result.ticks as f64 * 0.1;
+                    total += f64::from(result.score) * 1000.0 + result.ticks as f64 * 0.1;
                 }
                 (total / eval_seeds.len() as f64, i)
             })

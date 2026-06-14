@@ -165,11 +165,8 @@ impl AlphaZeroLite {
                     // Dense per-step reward folded into the edge value, so the
                     // search prefers food-ward moves even with an untrained
                     // value head (otherwise the policy collapses to circling).
-                    // Eat bonus raised to 0.5 (was 0.3) so MCTS more actively
-                    // pursues food while games stay tractable (1.0 caused the snake
-                    // to grow so long that state clones dominated MCTS cost).
                     let shaped = if ate {
-                        0.5
+                        1.0
                     } else if !terminal {
                         let d = s.board().distance(s.head(), s.food());
                         0.1 * (dist_before as f32 - d as f32)

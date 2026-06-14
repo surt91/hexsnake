@@ -23,13 +23,13 @@ pub enum ObsKind {
 pub const ACTIONS: usize = 6;
 
 /// Reward shaping constants (documented in `docs/training/dqn.md`).
-const REWARD_EAT: f32 = 1.0;
+const REWARD_EAT: f32 = 3.0;
 const REWARD_WIN: f32 = 2.0;
 const REWARD_DEATH: f32 = -1.0;
 /// Per-step shaping: scaled change in (torus-aware) distance to the food.
 const REWARD_APPROACH: f32 = 0.1;
-/// Tiny per-step living cost so dithering is mildly discouraged.
-const REWARD_STEP: f32 = -0.005;
+/// Per-step living cost — stronger pressure to seek food quickly.
+const REWARD_STEP: f32 = -0.01;
 
 /// Result of one [`Env::step`].
 #[derive(Debug, Clone)]
