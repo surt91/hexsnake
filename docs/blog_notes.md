@@ -332,3 +332,42 @@ dass man es Monate später noch versteht.
   denselben ES-Kern (Truncation + Gauß-Mutation, rayon-parallel) — der
   Unterschied ist nur die `build: &[f32] -> Box<dyn Strategy>`-Closure und die
   Netz-Dimensionen.
+
+## GA-Training Runs — Serie (Runs 001–006)
+
+- **Budget dominiert mehr als Architektur**: Die Hypothese aus Run 001 „mehr
+  Features oder größere Netze helfen" wurde erst in Run 005 wirklich bestätigt
+  — weil Run 004 bei größerem Netz *weniger* evals/param hatte als Run 003.
+  Sobald das Budget pro Parameter gleich bleibt, gewinnt das größere Netz.
+  Lernkurve: 003 (618 P, 828 evals/P) → 004 (1614 P, 317 evals/P) → 005
+  (1614 P, 2380 evals/P) = 91.4/125.1, besser als alle vorherigen Runs.
+
+- **Seed-Sensitivität kann Budget schlagen**: Run 006 lief 4× länger als
+  Run 005, aber Seed 4 konvergierte in ein schlechteres lokales Optimum.
+  Schon bei gen 5000 lag Run 006 (fitness 9588) weit hinter Run 005 (12434)
+  — auf denselben Eval-Boards, da die Seeds generationsindexiert sind.
+  Mit Truncation-ES gibt es keinen Mechanismus, dieses Tal zu verlassen:
+  σ = 0.06 ist zu klein für den 1614-dim-Parameterraum.
+
+- **Budget-Hypothese praktisch**: Mehrere kurze Runs mit verschiedenen Seeds
+  sind effizienter als ein langer Lauf mit fixem Seed. Wer länger trainieren
+  will, sollte parallel mehrere Seeds starten und am Ende das beste Netz
+  wählen (Selection-over-Restarts). CMA-ES wäre der sauberere Ansatz:
+  adaptive Schrittweite + Kovarianz-Anpassung umgeht die Plateau-Falle.
+
+- **Topologie-Blindheit ist ein echter Bug**: Run 001 (Walls-only) erzielte
+  auf Periodic nur Ø 6 — das Netz hatte nie gelernt, dass Wände fehlen.
+  `--mixed` (50/50 Walls/Periodic) löste das Problem vollständig. Preis:
+  Walls-Score fiel kurzzeitig, erholte sich aber mit mehr Budget.
+
+- **Continuous food-approach > binär**: Der Wechsel von binärem
+  „approaches_food" zu einem signierten Wert (Magnitude ∝ 1/food_dist) war
+  konzeptuell richtig, aber in Gen 100 war der Score kurzfristig schlechter.
+  Das Netz muss erst lernen, den neuen Signal-Bereich zu nutzen — danach
+  übertrifft es klar das binäre Signal. Geduld zahlt sich aus.
+
+- **Fitness-Werte sind nicht cross-Run vergleichbar**: Run 006 gen-0 best=2223,
+  Run 005 gen-0 best=983 — trotzdem ist Run 006 schwächer. Seed 4 zieht
+  zufällig eine stärkere Initialpopulation, aber das sagt nichts über das
+  Endresultat. Nur gleiche Generation = gleiche Eval-Boards → direkt
+  vergleichbar.
