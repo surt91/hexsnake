@@ -1,7 +1,7 @@
 //! Evolution-strategy trainer for the HexSnake neural net (native only).
 //!
 //! The real, long training runs are executed by the user on a beefier
-//! machine — see `docs/training/neural-net-ga.md` for the full guide.
+//! machine — see `docs/training/mlp-ga/guide.md` for the full guide.
 //! `cargo run --release -p snake-train -- --smoke` verifies the pipeline.
 
 use std::path::PathBuf;

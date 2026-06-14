@@ -160,7 +160,7 @@ verlassen.
 
 | Datei | Beschreibung |
 |---|---|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | Weiterhin Run 005 (Run 006 schlechter) |
+| `crates/snake-core/assets/mlp-ga/best.mlp` | Weiterhin Run 005 (Run 006 schlechter) |
 | `training-out/run-006/best.mlp` | Bestes Netz des Laufs (Referenz) |
 | `training-out/run-006/fitness.csv` | Lernkurve (nicht eingecheckt) |
 | `training-out/run-006/gen_*.mlp` | Checkpoints alle 1 000 Gen (21 Dateien) |

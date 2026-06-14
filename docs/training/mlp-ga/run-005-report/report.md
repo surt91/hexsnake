@@ -69,7 +69,7 @@ Ein längerer Lauf würde wahrscheinlich noch weiter gewinnen.
 ## 3. Benchmark-Ergebnis (50 Partien, 10 000 Ticks, 16×12)
 
 ```bash
-cp training-out/run-005/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp
+cp training-out/run-005/best.mlp crates/snake-core/assets/mlp-ga/best.mlp
 cargo run --release -p snake-core --example benchmark 50 10000
 ```
 
@@ -273,7 +273,7 @@ Das eingecheckte `best.mlp` ist nun das Run-005-Netz.
 
 | Datei | Beschreibung |
 |---|---|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | **Run 005 Netz (Walls 91.4, Periodic 125.1)** |
+| `crates/snake-core/assets/mlp-ga/best.mlp` | **Run 005 Netz (Walls 91.4, Periodic 125.1)** |
 | `training-out/run-005/best.mlp` | Identisch |
 | `training-out/run-005/fitness.csv` | Lernkurve (nicht eingecheckt) |
 | `training-out/run-005/gen_*.mlp` | Checkpoints alle 250 Gen |

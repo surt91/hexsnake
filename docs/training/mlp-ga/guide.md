@@ -17,7 +17,7 @@ Ergebnis ist eine Gewichtsdatei im dokumentierten Textformat
 - `<out-dir>/fitness.csv` — Lernkurve (`generation,best,mean`)
 
 Ins Spiel kommt das Netz über die eingecheckte Datei
-`crates/snake-core/assets/neural-net-ga/best.mlp` (per `include_str!`
+`crates/snake-core/assets/mlp-ga/best.mlp` (per `include_str!`
 eingebettet, Dropdown-Eintrag „Neural Net"). Die aktuell eingecheckte
 Datei stammt aus einem **Smoke-Run** und ist nur Platzhalter-Qualität.
 
@@ -103,7 +103,7 @@ Benchmark gegen die klassischen Strategien (das eingebettete Netz tritt
 als „Neural Net" an):
 
 ```bash
-cp <out-dir>/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp
+cp <out-dir>/best.mlp crates/snake-core/assets/mlp-ga/best.mlp
 cargo run --release -p snake-core --example benchmark 50 10000
 ```
 
@@ -114,14 +114,14 @@ ein echter Lauf sollte klar darüber liegen. Monte-Carlo (≈ 62) ist die
 nächste Messlatte.
 
 Checkpoints vergleichen: jeweils nach
-`crates/snake-core/assets/neural-net-ga/best.mlp` kopieren und den
+`crates/snake-core/assets/mlp-ga/best.mlp` kopieren und den
 Benchmark erneut laufen lassen (oder mehrere `gen_*.mlp` nacheinander
 durchmessen) — die Lernkurve über Generationen ist später auch ein
 hübsches Blog-Diagramm (`fitness.csv` aufheben!).
 
 ## 7. Ergebnis einchecken
 
-1. `cp <out-dir>/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp`
+1. `cp <out-dir>/best.mlp crates/snake-core/assets/mlp-ga/best.mlp`
 2. Optional 2–3 markante Zwischenstände (z. B. `gen_00100.mlp`) daneben
    legen, falls später „Gen X"-Varianten im Dropdown gewünscht sind.
 3. Prüfen: `cargo test --workspace` (validiert u. a., dass die Datei

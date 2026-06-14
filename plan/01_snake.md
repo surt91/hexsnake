@@ -201,7 +201,7 @@ Hyperparameter-Wahl und Auswertung.)*
       Mechanik zum Einbetten von Gewichts-Assets; Strategie
       „Neural Net (Gen X)" im Dropdown, Gewichte austauschbar, sobald der
       Nutzer den echten Lauf gemacht hat.
-- [x] **Trainings-Anleitung** `docs/training/neural-net-ga.md` schreiben
+- [x] **Trainings-Anleitung** `docs/training/mlp-ga/guide.md` schreiben
       (Skill `/training-docs`): Voraussetzungen, Befehle, Hyperparameter,
       erwartete Laufzeit, Auswertung, Einbetten der Checkpoints.
 - [x] NN in den Benchmark aufnehmen.

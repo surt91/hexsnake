@@ -1,6 +1,6 @@
 ---
 name: training-docs
-description: Trainings-Anleitung für eine lernende Strategie nach docs/training/<name>.md schreiben oder aktualisieren. Nutzen, sobald eine Strategie mit Trainingslauf implementiert wird (NN/GA, NEAT, Behavior Cloning, DQN, PPO, …) — der Agent macht nur Smoke-Runs, echte Läufe macht der Nutzer auf stärkerer Hardware.
+description: Trainings-Anleitung für eine lernende Strategie nach docs/training/<name>/guide.md schreiben oder aktualisieren. Nutzen, sobald eine Strategie mit Trainingslauf implementiert wird (NN/GA, NEAT, Behavior Cloning, DQN, PPO, …) — der Agent macht nur Smoke-Runs, echte Läufe macht der Nutzer auf stärkerer Hardware.
 ---
 
 # Trainings-Anleitungen schreiben
@@ -10,8 +10,8 @@ stärkeren Rechner des Nutzers — nicht auf dieser Maschine. Bei der
 Implementierung wird nur ein **Smoke-Run** (Miniatur-Parameter, wenige
 Sekunden bis Minuten) ausgeführt, um die Pipeline zu verifizieren. Alles,
 was der Nutzer für den echten Lauf braucht, steht in
-`docs/training/<name>.md` (ein File pro trainierbarer Strategie,
-kebab-case, z. B. `neural-net-ga.md`, `dqn.md`).
+`docs/training/<name>/guide.md` (ein Verzeichnis pro trainierbarer
+Strategie, kebab-case, z. B. `mlp-ga/guide.md`, `dqn/guide.md`).
 
 ## Pflicht-Struktur der Anleitung (deutsch)
 

@@ -27,8 +27,8 @@ pub fn default_dims() -> Vec<usize> {
 
 /// Weights trained by `snake-train` (GA/ES). The checked-in file starts
 /// out as a smoke-run artifact and is replaced by the user's real
-/// training run — see `docs/training/neural-net-ga.md`.
-pub const EMBEDDED_WEIGHTS: &str = include_str!("../../assets/neural-net-ga/best.mlp");
+/// training run — see `docs/training/mlp-ga/guide.md`.
+pub const EMBEDDED_WEIGHTS: &str = include_str!("../../assets/mlp-ga/best.mlp");
 
 /// Embedded DQN policy weights (stable-baselines3 export, `.mlp` format).
 pub const EMBEDDED_DQN: &str = include_str!("../../assets/dqn/policy.mlp");

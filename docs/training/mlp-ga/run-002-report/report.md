@@ -100,7 +100,7 @@ gemischte Ziel. Die Lücke schließt sich leicht über die Zeit.
 ## 4. Benchmark-Ergebnis (50 Partien, 10 000 Ticks, 16×12)
 
 ```bash
-cp training-out/run-002/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp
+cp training-out/run-002/best.mlp crates/snake-core/assets/mlp-ga/best.mlp
 cargo run --release -p snake-core --example benchmark 50 10000
 ```
 
@@ -255,7 +255,7 @@ Navigationsinformation geben und voraussichtlich beide Scores verbessern.
 
 | Datei | Beschreibung |
 |---|---|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | Eingechecktes Netz (dieser Run) |
+| `crates/snake-core/assets/mlp-ga/best.mlp` | Eingechecktes Netz (dieser Run) |
 | `training-out/run-002/best.mlp` | Bestes Netz des Laufs (identisch) |
 | `training-out/run-002/fitness.csv` | Lernkurve (nicht eingecheckt) |
 | `training-out/run-002/gen_*.mlp` | Zwischen-Checkpoints alle 100 Gen |

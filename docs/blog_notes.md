@@ -255,7 +255,7 @@ dass man es Monate später noch versteht.
   Chaos 2,1 < Greedy 21,0 < NN-Smoke 37,4 < Monte-Carlo 62,4 <
   Pfadplaner 134,8 < Hamilton 180,4 (Torus sogar 189,0 = jede Partie
   perfekt). Der echte Trainingslauf läuft später auf stärkerer Hardware
-  (`docs/training/neural-net-ga.md`).
+  (`docs/training/mlp-ga/guide.md`).
 - **Box–Muller statt rand_distr**: Für Gauß-Mutation reichen zwei Zeilen
   Box–Muller — eine Dependency weniger im Trainer.
 

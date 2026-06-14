@@ -48,7 +48,7 @@ das Spiel muss **offline immer voll funktionieren**.
 - **Training**: Echte Trainingsläufe (NN/GA, später NEAT/BC/DQN/PPO) führt
   der Nutzer auf stärkerer Hardware aus — der Agent macht nur minimale
   Smoke-Runs zur Pipeline-Verifikation. Für jede trainierbare Strategie
-  gibt es eine Anleitung in `docs/training/<name>.md` (Struktur und Regeln:
+  gibt es eine Anleitung in `docs/training/<name>/guide.md` (Struktur und Regeln:
   Skill `/training-docs`); sie wird im selben Commit gepflegt wie Änderungen
   an Trainer-CLI oder Formaten.
 - `cargo fmt` ist verbindlich, Clippy-Warnungen werden behoben statt

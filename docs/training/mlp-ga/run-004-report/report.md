@@ -219,7 +219,7 @@ ist. Für einen echten Produktions-Einsatz wäre ein Rückschritt auf 20→16→
 
 | Datei | Beschreibung |
 |---|---|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | Smoke-Run-Platzhalter (20→32→24→6) |
+| `crates/snake-core/assets/mlp-ga/best.mlp` | Smoke-Run-Platzhalter (20→32→24→6) |
 | `training-out/run-004/best.mlp` | Bestes Netz des Laufs |
 | `training-out/run-004/fitness.csv` | Lernkurve (nicht eingecheckt) |
 | `training-out/run-004/gen_*.mlp` | Checkpoints alle 100 Gen |

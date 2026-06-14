@@ -73,7 +73,7 @@ Die vollständige Kurve liegt in `training-out/run-001/fitness.csv`.
 ## 4. Benchmark-Ergebnis (50 Partien, 10 000 Ticks, 16×12)
 
 ```bash
-cp training-out/run-001/best.mlp crates/snake-core/assets/neural-net-ga/best.mlp
+cp training-out/run-001/best.mlp crates/snake-core/assets/mlp-ga/best.mlp
 cargo run --release -p snake-core --example benchmark 50 10000
 ```
 
@@ -187,7 +187,7 @@ unter 3 Stunden — der Trainer skaliert wie erwartet linear.
 
 | Datei                                              | Beschreibung                            |
 |----------------------------------------------------|-----------------------------------------|
-| `crates/snake-core/assets/neural-net-ga/best.mlp` | Eingechecktes Netz (dieser Run)         |
+| `crates/snake-core/assets/mlp-ga/best.mlp` | Eingechecktes Netz (dieser Run)         |
 | `training-out/run-001/best.mlp`                    | Identisch, lokale Kopie                 |
 | `training-out/run-001/fitness.csv`                 | Lernkurve (nicht eingecheckt)           |
 | `training-out/run-001/gen_*.mlp`                   | Zwischen-Checkpoints alle 100 Gen       |
