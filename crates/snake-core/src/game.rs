@@ -41,110 +41,15 @@ impl Default for Config {
     }
 }
 
-/// Fixed-capacity ring buffer for snake cells.
-///
-/// Uses a fixed-size backing array so `Clone` is always a flat
-/// `memcpy` of `CAPACITY × size_of::<Offset>()` bytes regardless of the
-/// actual snake length. This makes `GameState::clone()` alloc-free, which is
-/// critical for MCTS where the state is cloned thousands of times per tick.
-///
-/// Capacity 256 supports boards up to 256 cells (default 16×12 = 192).
-#[derive(Debug, Clone, Copy)]
-struct SnakeRing {
-    buf: [Offset; SnakeRing::CAPACITY],
-    /// Index of the front (head) element.
-    head: u16,
-    /// Number of elements currently stored.
-    len: u16,
-}
-
-impl SnakeRing {
-    const CAPACITY: usize = 512;
-
-    fn new() -> Self {
-        Self {
-            buf: [Offset::new(0, 0); Self::CAPACITY],
-            head: 0,
-            len: 0,
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    fn front(&self) -> Option<&Offset> {
-        if self.len == 0 {
-            None
-        } else {
-            Some(&self.buf[self.head as usize])
-        }
-    }
-
-    fn back(&self) -> Option<&Offset> {
-        if self.len == 0 {
-            None
-        } else {
-            let tail = (self.head as usize + self.len as usize - 1) % Self::CAPACITY;
-            Some(&self.buf[tail])
-        }
-    }
-
-    fn push_front(&mut self, v: Offset) {
-        debug_assert!(
-            (self.len as usize) < Self::CAPACITY,
-            "SnakeRing overflow — board larger than {} cells?",
-            Self::CAPACITY
-        );
-        self.head = ((self.head as usize + Self::CAPACITY - 1) % Self::CAPACITY) as u16;
-        self.buf[self.head as usize] = v;
-        self.len += 1;
-    }
-
-    fn pop_back(&mut self) -> Option<Offset> {
-        if self.len == 0 {
-            return None;
-        }
-        let tail = (self.head as usize + self.len as usize - 1) % Self::CAPACITY;
-        self.len -= 1;
-        Some(self.buf[tail])
-    }
-
-    fn iter(&self) -> impl Iterator<Item = Offset> + '_ {
-        let cap = Self::CAPACITY;
-        let start = self.head as usize;
-        let len = self.len as usize;
-        (0..len).map(move |i| self.buf[(start + i) % cap])
-    }
-}
-
-impl PartialEq for SnakeRing {
-    fn eq(&self, other: &Self) -> bool {
-        if self.len != other.len {
-            return false;
-        }
-        for i in 0..self.len as usize {
-            let ai = (self.head as usize + i) % Self::CAPACITY;
-            let bi = (other.head as usize + i) % Self::CAPACITY;
-            if self.buf[ai] != other.buf[bi] {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 /// Full game state. Fully deterministic: the same config and the same input
 /// sequence always produce the same sequence of states.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameState {
     board: Board,
     /// Snake cells, head at the front, tail at the back.
-    snake: SnakeRing,
+    snake: VecDeque<Offset>,
     /// Flat occupancy map (row-major) for O(1) `occupies()` checks.
-    /// Fixed size matching `SnakeRing::CAPACITY` — clone is a flat array copy,
-    /// no heap allocation.
-    occupied: [bool; SnakeRing::CAPACITY],
+    occupied: Vec<bool>,
     direction: Direction,
     input_queue: VecDeque<Direction>,
     food: Offset,
@@ -161,24 +66,17 @@ impl GameState {
             board.num_cells() > START_LENGTH + 1,
             "board too small for the snake"
         );
-        assert!(
-            board.num_cells() <= SnakeRing::CAPACITY,
-            "board too large for fixed buffers: {} cells > {} capacity",
-            board.num_cells(),
-            SnakeRing::CAPACITY
-        );
 
         // Head near the center, body extending south, moving north.
         let head = Offset::new(config.width / 2, config.height / 2);
-        let mut snake = SnakeRing::new();
-        for i in (0..START_LENGTH as i32).rev() {
-            snake.push_front(Offset::new(head.col, head.row + i));
-        }
-        debug_assert!(snake.iter().all(|c| board.contains(c)));
+        let snake: VecDeque<Offset> = (0..START_LENGTH as i32)
+            .map(|i| Offset::new(head.col, head.row + i))
+            .collect();
+        debug_assert!(snake.iter().all(|c| board.contains(*c)));
 
-        let mut occupied = [false; SnakeRing::CAPACITY];
-        for cell in snake.iter() {
-            occupied[Self::cell_index_for(&board, cell)] = true;
+        let mut occupied = vec![false; board.num_cells()];
+        for cell in &snake {
+            occupied[Self::cell_index_for(&board, *cell)] = true;
         }
 
         let mut state = Self {
@@ -202,8 +100,8 @@ impl GameState {
     }
 
     /// Snake cells, head first.
-    pub fn snake(&self) -> impl Iterator<Item = Offset> + '_ {
-        self.snake.iter()
+    pub fn snake(&self) -> impl DoubleEndedIterator<Item = Offset> + ExactSizeIterator + '_ {
+        self.snake.iter().copied()
     }
 
     pub fn head(&self) -> Offset {
@@ -564,21 +462,5 @@ mod tests {
             state.score()
         );
         assert!(state.score() > 0, "should have eaten before dying");
-    }
-
-    #[test]
-    fn snake_ring_clone_is_logically_equal() {
-        // Verifies that SnakeRing's clone preserves logical (not positional) equality
-        // — the ring head index may differ after push/pop cycles.
-        let mut ring = SnakeRing::new();
-        for i in 0..10i32 {
-            ring.push_front(Offset::new(i, i));
-        }
-        let clone = ring;
-        assert_eq!(ring, clone);
-        assert_eq!(ring.len(), clone.len());
-        for (a, b) in ring.iter().zip(clone.iter()) {
-            assert_eq!(a, b);
-        }
     }
 }
