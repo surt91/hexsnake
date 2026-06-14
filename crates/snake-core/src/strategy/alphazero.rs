@@ -166,7 +166,7 @@ impl AlphaZeroLite {
                     // search prefers food-ward moves even with an untrained
                     // value head (otherwise the policy collapses to circling).
                     let shaped = if ate {
-                        1.0
+                        0.3
                     } else if !terminal {
                         let d = s.board().distance(s.head(), s.food());
                         0.1 * (dist_before as f32 - d as f32)
@@ -298,9 +298,9 @@ pub fn self_play(
         let dir = state.direction().rotated_cw(action as u8);
         state.tick(Some(dir));
 
-        let mut reward = -0.01; // living cost — stronger pressure to seek food
+        let mut reward = -0.005;
         if state.score() > score_before {
-            reward += 3.0; // ate — 3× death-penalty to strongly prioritize food
+            reward += 1.0;
         } else {
             let dist = state.board().distance(state.head(), state.food());
             reward += 0.1 * (dist_before as f32 - dist as f32);
