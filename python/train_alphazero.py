@@ -80,6 +80,33 @@ def train_step(net, optim, batch):
     return policy_loss.item(), value_loss.item()
 
 
+def load_net_from_mlp(path: str) -> "AZNet":
+    """Warm-start an AZNet from an exported .mlp file."""
+    with open(path, encoding="utf-8") as f:
+        lines = [ln.strip() for ln in f if ln.strip()]
+    dims = list(map(int, lines[1].split()))
+    params: list[float] = []
+    for line in lines[2:]:
+        params.extend(float(v) for v in line.split())
+
+    net = AZNet()
+    offset = 0
+    for (W_param, b_param), in_dim, out_dim in zip(net._layers(), dims, dims[1:]):
+        n_w = out_dim * in_dim
+        W_data = torch.tensor(
+            params[offset : offset + n_w], dtype=torch.float32
+        ).reshape(out_dim, in_dim)
+        offset += n_w
+        b_data = torch.tensor(
+            params[offset : offset + out_dim], dtype=torch.float32
+        )
+        offset += out_dim
+        with torch.no_grad():
+            W_param.copy_(W_data)
+            b_param.copy_(b_data)
+    return net
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--iterations", type=int, default=30)
@@ -100,6 +127,12 @@ def main():
         default=None,
         help="path for the best-checkpoint (by avg_game_len); defaults to <out>.best.mlp",
     )
+    ap.add_argument(
+        "--load",
+        default=None,
+        metavar="MLP",
+        help="warm-start from an existing .mlp file instead of random weights",
+    )
     args = ap.parse_args()
 
     best_out = args.best_out or (args.out.removesuffix(".mlp") + ".best.mlp")
@@ -108,7 +141,11 @@ def main():
     random.seed(args.seed)
     torch.set_num_threads(1)  # parallelism is in Rust self-play, not torch
 
-    net = AZNet()
+    if args.load:
+        net = load_net_from_mlp(args.load)
+        print(f"loaded initial weights from {args.load}")
+    else:
+        net = AZNet()
     export_self_check(net)
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
     buffer = deque(maxlen=args.buffer)
