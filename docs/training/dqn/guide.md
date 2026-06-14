@@ -14,33 +14,34 @@ Rust/WASM ausgeführt (kein PyTorch zur Laufzeit). Trainer: `python/train_dqn.py
 (stable-baselines3 + torch).
 
 > **Hinweis zur eingecheckten Datei**: `crates/snake-core/assets/dqn/policy.mlp`
-> ist aktuell ein **Platzhalter** (ein schwaches GA-Stellvertreter-Netz),
-> damit der Dropdown-Eintrag „DQN" und der Benchmark sofort funktionieren. Er
-> wird durch den echten DQN-Export ersetzt, sobald du trainiert hast. Echte
-> RL-Läufe macht der Nutzer auf stärkerer Hardware (GPU empfohlen).
+> ist ein echter, aber **kurz trainierter Smoke-DQN** (mixed-boundary,
+> ~700k Steps) — funktionsfähig, aber nur Smoke-Qualität. Für ein starkes Netz
+> länger trainieren (echte Läufe macht der Nutzer auf stärkerer Hardware,
+> GPU empfohlen) und das `.mlp` ersetzen.
 
 ## 2. Voraussetzungen / Setup
 
-Siehe `python/README.md`. Kurzform (mit `uv`):
+Siehe `python/README.md`. Python ist auf **3.13** gepinnt
+(`python/.python-version`); `uv run` baut die Extension und richtet die
+Umgebung selbst ein. Kurzform (alle Befehle aus `python/`):
 
 ```bash
 cd python
-uv venv && source .venv/bin/activate
-uv pip install -e '.[train]'     # baut die Rust-Extension + SB3/torch
+uv sync --extra train            # baut die Rust-Extension + SB3/torch
 ```
 
 Roundtrip des Gewichtsformats prüfen (ohne torch):
 
 ```bash
-python verify_roundtrip.py       # numpy-Export == Rust-Inferenz?
+uv run python verify_roundtrip.py   # numpy-Export == Rust-Inferenz?
 ```
 
 ## 3. Smoke-Test (immer zuerst)
 
 ```bash
-python -c "from hexsnake_rl import HexSnakeGym; e=HexSnakeGym(); \
+uv run python -c "from hexsnake_rl import HexSnakeGym; e=HexSnakeGym(); \
 o,_=e.reset(seed=0); print(len(o), e.step(0))"
-python train_dqn.py --timesteps 20000 --out /tmp/dqn-smoke.mlp
+uv run --extra train python train_dqn.py --timesteps 20000 --out /tmp/dqn-smoke.mlp
 ```
 
 Verifiziert Env, Training-Loop und Export in Minuten.
@@ -48,7 +49,7 @@ Verifiziert Env, Training-Loop und Export in Minuten.
 ## 4. Echter Lauf
 
 ```bash
-python train_dqn.py \
+uv run --extra train python train_dqn.py \
   --timesteps 3000000 \
   --boundary walls \
   --max-ticks 2000 \

@@ -8,25 +8,28 @@ for training.
 
 ## Setup (uv)
 
+The Python version is pinned to **3.13** (`.python-version`) — torch and
+stable-baselines3 ship wheels for it. `uv run` builds the Rust extension and
+provisions the environment automatically, so no manual venv/activate is
+needed; just prefix commands with `uv run` (all from the `python/` directory).
+
 ```bash
 cd python
-uv venv
-source .venv/bin/activate
 
-# Build + install the Rust extension and the env deps (numpy, gymnasium):
-uv pip install -e .
+# Provision the env + build the extension (numpy, gymnasium):
+uv sync
 
 # Optional: the heavy RL stack (stable-baselines3 + torch) for training:
-uv pip install -e '.[train]'
+uv sync --extra train
 ```
 
 `maturin` (the build backend) compiles `crates/snake-py` with the `python`
-feature and installs the `hexsnake_env` extension module.
+feature and installs the `hexsnake_rl` package with the `_native` extension.
 
 ## Verify the weight roundtrip (no torch needed)
 
 ```bash
-python verify_roundtrip.py
+uv run python verify_roundtrip.py
 ```
 
 Builds a random MLP in numpy, exports it, and checks the numpy forward pass
@@ -36,7 +39,7 @@ guards the Python→Rust weight layout — the classic transposition trap.
 ## Smoke-test the environment
 
 ```bash
-python -c "from hexsnake_rl import HexSnakeGym; e=HexSnakeGym(); o,_=e.reset(seed=0); \
+uv run python -c "from hexsnake_rl import HexSnakeGym; e=HexSnakeGym(); o,_=e.reset(seed=0); \
 print('obs', len(o)); print(e.step(0))"
 ```
 
@@ -44,10 +47,10 @@ print('obs', len(o)); print(e.step(0))"
 
 ```bash
 # PPO (rays observation, matches the in-game MLP topology):
-python train_ppo.py --timesteps 2000000 --n-envs 8 --out ppo.mlp
+uv run --extra train python train_ppo.py --timesteps 2000000 --n-envs 8 --out ppo.mlp
 
 # DQN:
-python train_dqn.py --timesteps 2000000 --out dqn.mlp
+uv run --extra train python train_dqn.py --timesteps 2000000 --out dqn.mlp
 ```
 
 Reward shaping (in `crates/snake-py/src/env.rs`): +1 eating, +2 winning,
@@ -71,6 +74,6 @@ cargo test -p snake-core embedded            # parses & plays legally?
 cargo run --release -p snake-core --example benchmark 30 5000
 ```
 
-The checked-in `assets/{dqn,ppo}/policy.mlp` are untrained placeholders until
-you run the real training. See `docs/training/dqn.md` and
-`docs/training/ppo.md`.
+The checked-in `assets/{dqn,ppo}/policy.mlp` are genuine but short-trained
+smoke nets (mixed-boundary); train longer to replace them. See
+`docs/training/dqn/guide.md` and `docs/training/ppo/guide.md`.

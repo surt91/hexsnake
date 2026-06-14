@@ -11,6 +11,8 @@ __pycache__/
 # maturin-built extension (compiled into the editable install)
 *.so
 *.pyd
+# uv lockfile pins platform-specific (CUDA) torch wheels; resolve per machine
+python/uv.lock
 
 # E2E
 e2e/node_modules/

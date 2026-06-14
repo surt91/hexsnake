@@ -14,32 +14,32 @@ Der Policy-Kopf (Logits über die sechs Aktionen) wird **1:1 ins
 stabiler/sample-effizienter als DQN.
 
 > **Hinweis zur eingecheckten Datei**: `crates/snake-core/assets/ppo/policy.mlp`
-> ist aktuell ein **Platzhalter** (schwaches GA-Stellvertreter-Netz), damit
-> Dropdown-Eintrag „PPO" und Benchmark sofort funktionieren — wird durch den
-> echten PPO-Export ersetzt. Echte Läufe macht der Nutzer auf stärkerer
-> Hardware.
+> ist ein echter, aber **kurz trainierter Smoke-PPO** (mixed-boundary,
+> ~1,5M Steps) — funktionsfähig, aber nur Smoke-Qualität. Für ein starkes Netz
+> länger trainieren und das `.mlp` ersetzen (echte Läufe macht der Nutzer auf
+> stärkerer Hardware).
 
 ## 2. Voraussetzungen / Setup
 
-Siehe `python/README.md`:
+Siehe `python/README.md`. Python ist auf **3.13** gepinnt; `uv run` baut die
+Extension und richtet die Umgebung selbst ein (alle Befehle aus `python/`):
 
 ```bash
 cd python
-uv venv && source .venv/bin/activate
-uv pip install -e '.[train]'
-python verify_roundtrip.py        # Gewichtsformat: numpy == Rust?
+uv sync --extra train
+uv run python verify_roundtrip.py   # Gewichtsformat: numpy == Rust?
 ```
 
 ## 3. Smoke-Test (immer zuerst)
 
 ```bash
-python train_ppo.py --timesteps 50000 --n-envs 4 --out /tmp/ppo-smoke.mlp
+uv run --extra train python train_ppo.py --timesteps 50000 --n-envs 4 --out /tmp/ppo-smoke.mlp
 ```
 
 ## 4. Echter Lauf
 
 ```bash
-python train_ppo.py \
+uv run --extra train python train_ppo.py \
   --timesteps 5000000 \
   --n-envs 8 \
   --boundary walls \

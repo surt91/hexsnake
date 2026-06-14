@@ -55,14 +55,14 @@ impl NeuralNet {
         Self::new(Mlp::from_text(EMBEDDED_WEIGHTS).expect("embedded weights must parse"))
     }
 
-    /// The embedded DQN policy exported from stable-baselines3
-    /// (placeholder until the user trains — see `docs/training/dqn.md`).
+    /// The embedded DQN policy exported from stable-baselines3 (a short
+    /// mixed-boundary smoke run — see `docs/training/dqn/guide.md`).
     pub fn embedded_dqn() -> Self {
         Self::new(Mlp::from_text(EMBEDDED_DQN).expect("embedded DQN weights must parse"))
     }
 
-    /// The embedded PPO policy exported from stable-baselines3
-    /// (placeholder until the user trains — see `docs/training/ppo.md`).
+    /// The embedded PPO policy exported from stable-baselines3 (a short
+    /// mixed-boundary smoke run — see `docs/training/ppo/guide.md`).
     pub fn embedded_ppo() -> Self {
         Self::new(Mlp::from_text(EMBEDDED_PPO).expect("embedded PPO weights must parse"))
     }

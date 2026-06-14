@@ -26,11 +26,17 @@ class HexSnakeGym(gym.Env):
         observation: str = "rays",
     ):
         super().__init__()
-        self._env = _native.HexSnakeEnv(
-            width, height, boundary, max_ticks, observation
-        )
         self._w, self._h = width, height
         self._obs_kind = observation
+        self._max_ticks = max_ticks
+        # "mixed" randomizes the boundary per episode so one policy learns
+        # both walls and torus (matching the in-game strategies). The native
+        # env has a fixed boundary, so it is rebuilt on reset in that case.
+        self._mixed = boundary == "mixed"
+        self._boundary = "walls" if self._mixed else boundary
+        self._env = _native.HexSnakeEnv(
+            width, height, self._boundary, max_ticks, observation
+        )
         self.action_space = spaces.Discrete(self._env.num_actions)
         if observation == "grid":
             self.observation_space = spaces.Box(
@@ -50,6 +56,11 @@ class HexSnakeGym(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
+        if self._mixed:
+            boundary = "walls" if self.np_random.integers(2) == 0 else "torus"
+            self._env = _native.HexSnakeEnv(
+                self._w, self._h, boundary, self._max_ticks, self._obs_kind
+            )
         s = 0 if seed is None else int(seed) & 0xFFFFFFFF
         return self._shape(self._env.reset(s)), {}
 

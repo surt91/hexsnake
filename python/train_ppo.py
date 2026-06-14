@@ -32,7 +32,7 @@ def main():
     ap.add_argument("--n-envs", type=int, default=8)
     ap.add_argument("--width", type=int, default=16)
     ap.add_argument("--height", type=int, default=12)
-    ap.add_argument("--boundary", default="walls", choices=["walls", "torus"])
+    ap.add_argument("--boundary", default="walls", choices=["walls", "torus", "mixed"])
     ap.add_argument("--max-ticks", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument(
