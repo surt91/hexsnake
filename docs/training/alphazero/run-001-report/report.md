@@ -68,8 +68,8 @@ Klare Verbesserung auf Walls; Periodic kaum verändert.
 | MLP-GA 005    |   91.40 |     125.12 |
 | NEAT run-001  |   38.92 |      56.84 |
 | **AZ run-001**| **37.60** | **54.28** |
-| DQN run-001   | _todo_  |     _todo_ |
-| PPO run-001   | _todo_  |     _todo_ |
+| PPO run-001   |   38.24 |      58.62 |
+| DQN run-001   |   22.96 |      48.18 |
 
 AlphaZero und NEAT auf vergleichbarem Niveau. Beide deutlich unter MLP-GA.
 
