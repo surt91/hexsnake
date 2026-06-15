@@ -259,6 +259,19 @@ pub struct AzSample {
     pub value: f32,
 }
 
+/// Outcome of one self-play game: the training samples plus the game-level
+/// stats the trainer needs to pick checkpoints by the *real* objective
+/// (food eaten), not by survival time.
+#[derive(Debug, Clone)]
+pub struct SelfPlayResult {
+    /// Per-step training samples.
+    pub samples: Vec<AzSample>,
+    /// Final score (food eaten) of the game.
+    pub score: u32,
+    /// Number of ticks the game lasted.
+    pub ticks: u64,
+}
+
 /// Discount for the self-play value target.
 const SELFPLAY_GAMMA: f32 = 0.99;
 
@@ -275,7 +288,7 @@ pub fn self_play(
     seed: u64,
     max_ticks: u64,
 ) -> Vec<AzSample> {
-    self_play_with_rewards(mlp, config, sims, temperature, seed, max_ticks, 0.3, 1.0)
+    self_play_with_rewards(mlp, config, sims, temperature, seed, max_ticks, 0.3, 1.0).samples
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -288,7 +301,7 @@ pub fn self_play_with_rewards(
     max_ticks: u64,
     eat_bonus: f32,
     sp_eat: f32,
-) -> Vec<AzSample> {
+) -> SelfPlayResult {
     use rand::SeedableRng as _;
 
     let az = AlphaZeroLite::with_eat_bonus(mlp.clone(), sims, eat_bonus);
@@ -342,7 +355,7 @@ pub fn self_play_with_rewards(
         values[t] = g.tanh();
     }
 
-    steps
+    let samples = steps
         .into_iter()
         .zip(values)
         .map(|((features, policy), value)| AzSample {
@@ -350,7 +363,13 @@ pub fn self_play_with_rewards(
             policy,
             value,
         })
-        .collect()
+        .collect();
+
+    SelfPlayResult {
+        samples,
+        score: state.score(),
+        ticks: state.ticks(),
+    }
 }
 
 /// Sample an action from visit counts weighted by `count^(1/temperature)`.

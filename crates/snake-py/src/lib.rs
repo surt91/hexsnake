@@ -94,8 +94,11 @@ mod bindings {
         Ok(mlp.forward(&input))
     }
 
-    /// Play one AlphaZero-light self-play game in Rust and return training
-    /// samples `(features, policy_target, value_target)`.
+    /// Play one AlphaZero-light self-play game in Rust and return
+    /// `(rows, score, ticks)`, where `rows` are training samples
+    /// `(features, policy_target, value_target)` and `score`/`ticks` are the
+    /// game-level outcome the trainer uses to pick checkpoints by food eaten
+    /// rather than survival time.
     ///
     /// `params` are the flat weights of a 7-output MLP (same layout as the
     /// `.mlp` format). `dims` specifies the layer sizes including input and
@@ -119,7 +122,7 @@ mod bindings {
         eat_bonus: f32,
         sp_eat: f32,
         dims: Option<Vec<usize>>,
-    ) -> PyResult<Vec<AzSampleRow>> {
+    ) -> PyResult<(Vec<AzSampleRow>, u32, u64)> {
         use snake_core::nn::{Mlp, FEATURE_COUNT};
         use snake_core::strategy::{self_play_with_rewards, AZ_OUTPUTS};
 
@@ -138,7 +141,7 @@ mod bindings {
         };
         // The game is pure Rust and touches no Python state → release the GIL
         // so threaded callers fan out across cores.
-        let samples = py.allow_threads(|| {
+        let result = py.allow_threads(|| {
             self_play_with_rewards(
                 &mlp,
                 config,
@@ -150,10 +153,12 @@ mod bindings {
                 sp_eat,
             )
         });
-        Ok(samples
+        let rows = result
+            .samples
             .into_iter()
             .map(|s| (s.features, s.policy.to_vec(), s.value))
-            .collect())
+            .collect();
+        Ok((rows, result.score, result.ticks))
     }
 
     #[pymodule]

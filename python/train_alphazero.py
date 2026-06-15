@@ -46,7 +46,13 @@ def export_self_check(net: AZNet) -> None:
 
 
 def collect_self_play(net, args, base_seed):
-    """Run `--games-per-iter` self-play games in parallel; return sample rows."""
+    """Run `--games-per-iter` self-play games in parallel.
+
+    Returns `(rows, mean_score, mean_ticks)`: the flattened training samples
+    plus per-game averages. `mean_score` (food eaten) is the real objective and
+    drives checkpoint selection — `mean_ticks` (survival time) is only logged,
+    because maximising it rewards the snake for circling forever.
+    """
     params = net.to_params()
     boundaries = (
         ["walls", "torus"] if args.boundary == "mixed" else [args.boundary]
@@ -64,10 +70,15 @@ def collect_self_play(net, args, base_seed):
         )
 
     rows = []
+    scores, tick_counts = [], []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        for res in pool.map(one, range(args.games_per_iter)):
-            rows.extend(res)
-    return rows
+        for game_rows, score, ticks in pool.map(one, range(args.games_per_iter)):
+            rows.extend(game_rows)
+            scores.append(score)
+            tick_counts.append(ticks)
+    mean_score = sum(scores) / len(scores)
+    mean_ticks = sum(tick_counts) / len(tick_counts)
+    return rows, mean_score, mean_ticks
 
 
 def train_step(net, optim, batch):
@@ -168,11 +179,11 @@ def main():
     buffer = deque(maxlen=args.buffer)
     seed = args.seed * 1_000_000
 
-    best_game_len = 0.0
+    best_score = -1.0
     best_iter = -1
 
     for it in range(args.iterations):
-        rows = collect_self_play(net, args, seed)
+        rows, mean_score, mean_ticks = collect_self_play(net, args, seed)
         seed += args.games_per_iter
         buffer.extend(rows)
 
@@ -188,22 +199,25 @@ def main():
                 idx = perm[s : s + args.batch]
                 last = train_step(net, optim, (feats[idx], policy_t[idx], value_t[idx]))
 
-        avg_game_len = len(rows) / args.games_per_iter
-        is_best = avg_game_len > best_game_len
+        # Checkpoint on mean self-play score (food eaten), the real objective.
+        # Selecting on game length instead rewards the snake for surviving by
+        # circling without eating — the historic source of seed-lottery results.
+        is_best = mean_score > best_score
         if is_best:
-            best_game_len = avg_game_len
+            best_score = mean_score
             best_iter = it
             net.export(best_out)
 
         print(
-            f"iter {it:3d}  buffer {n:6d}  ~game_len {avg_game_len:6.1f}  "
+            f"iter {it:3d}  buffer {n:6d}  score {mean_score:5.2f}  "
+            f"ticks {mean_ticks:6.1f}  "
             f"policy_loss {last[0]:.3f}  value_loss {last[1]:.3f}"
             + ("  [best]" if is_best else "")
         )
 
     net.export(args.out)
     print(f"exported policy/value net -> {args.out}")
-    print(f"best checkpoint (iter {best_iter}, game_len {best_game_len:.1f}) -> {best_out}")
+    print(f"best checkpoint (iter {best_iter}, score {best_score:.2f}) -> {best_out}")
 
 
 if __name__ == "__main__":
