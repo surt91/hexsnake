@@ -52,7 +52,7 @@ Beim Start läuft ein **Export-Self-Check** (numpy/Torch-Netz == Rust-Inferenz
 
 ```bash
 uv run --extra train python train_alphazero.py \
-  --iterations 60 \
+  --iterations 300 \
   --games-per-iter 128 \
   --sims 24 \
   --temperature 1.0 \
@@ -60,6 +60,7 @@ uv run --extra train python train_alphazero.py \
   --epochs 4 \
   --boundary mixed \
   --seed 1 \
+  --eval-every 5 --eval-games 20 --eval-max-ticks 4000 \
   --out az.mlp
 ```
 
@@ -68,6 +69,17 @@ uv run --extra train python train_alphazero.py \
 - `--sims` = Such-Budget pro Zug; merken, `embedded()` muss übereinstimmen.
 - `--temperature` steuert die Exploration beim Ziehen aus den Besuchszahlen
   (1.0 = proportional, →0 = greedy).
+- **Board-Vielfalt**: Jedes Self-Play-Spiel läuft auf einem eigenen Board-Seed
+  (nicht mehr fix Seed 0). Das ist entscheidend gegen Überfitten/Kreisen.
+- **Checkpoint-Auswahl per greedy Eval**: Alle `--eval-every` Iterationen
+  spielt der Trainer `--eval-games` greedy Spiele je Topologie auf Board-Seeds
+  `0..N` (wie `bench_mlp`) bei `--eval-max-ticks` und speichert `best.mlp` nach
+  dem besten Walls+Periodic-Mittel. Das spiegelt das Deployment-Verhalten —
+  Auswahl nach Self-Play-Score oder Überlebenszeit speichert Kreis-Kollaps.
+  Die Log-Spalten `sp_score`/`sp_ticks` sind nur Self-Play-Diagnose.
+- **Längeres Training hilft jetzt**: Mit Board-Vielfalt + greedy-Eval-Auswahl
+  steigt die Qualität über 300 Iterationen weiter (kein „länger → schlechter"
+  mehr; siehe Run 025).
 
 ## 3. Gradientenfreier Fallback (Rust, ohne Python)
 
