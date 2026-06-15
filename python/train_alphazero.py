@@ -49,9 +49,10 @@ def collect_self_play(net, args, base_seed):
     """Run `--games-per-iter` self-play games in parallel.
 
     Returns `(rows, mean_score, mean_ticks)`: the flattened training samples
-    plus per-game averages. `mean_score` (food eaten) is the real objective and
-    drives checkpoint selection — `mean_ticks` (survival time) is only logged,
-    because maximising it rewards the snake for circling forever.
+    plus per-game averages. These averages are *only logged* to watch training
+    progress — checkpoint selection uses the greedy benchmark (`eval_net`)
+    instead, because stochastic, tick-capped self-play scores stay high even
+    when the greedy policy has collapsed into circling without eating.
     """
     params = net.to_params()
     boundaries = (
@@ -79,6 +80,48 @@ def collect_self_play(net, args, base_seed):
     mean_score = sum(scores) / len(scores)
     mean_ticks = sum(tick_counts) / len(tick_counts)
     return rows, mean_score, mean_ticks
+
+
+# Fixed eval seeds, disjoint from the training-seed range, so the greedy
+# benchmark is deterministic and comparable across iterations and runs.
+EVAL_SEED_BASE = 7_000_000
+
+
+def eval_net(net, args):
+    """Greedy benchmark proxy used for checkpoint selection.
+
+    Plays `--eval-games` *greedy* (temperature 0) games per topology on fixed
+    seeds at the deployment tick budget, mirroring what `bench_mlp` measures.
+    Returns `(walls, torus, mean, ticks)` average scores; `mean` drives
+    selection. Unlike self-play this exposes circling collapse (high ticks,
+    low score), so the saved checkpoint matches the deployed objective.
+    """
+    params = net.to_params()
+    dims = net.get_dims()
+
+    def one(job):
+        boundary, seed = job
+        _, score, ticks = az_selfplay(
+            params, boundary, 16, 12, args.sims, 0.0,  # temperature 0 = greedy
+            seed, args.eval_max_ticks, args.eat_bonus, args.sp_eat, dims,
+        )
+        return boundary, score, ticks
+
+    jobs = [
+        (boundary, EVAL_SEED_BASE + i)
+        for boundary in ("walls", "torus")
+        for i in range(args.eval_games)
+    ]
+    scores = {"walls": [], "torus": []}
+    tick_counts = []
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for boundary, score, ticks in pool.map(one, jobs):
+            scores[boundary].append(score)
+            tick_counts.append(ticks)
+    walls = sum(scores["walls"]) / len(scores["walls"])
+    torus = sum(scores["torus"]) / len(scores["torus"])
+    ticks = sum(tick_counts) / len(tick_counts)
+    return walls, torus, (walls + torus) / 2, ticks
 
 
 def train_step(net, optim, batch):
@@ -141,6 +184,12 @@ def main():
                     help="MCTS edge reward for eating food (default 0.3)")
     ap.add_argument("--sp-eat", type=float, default=1.0,
                     help="self-play return bonus for eating food (default 1.0)")
+    ap.add_argument("--eval-every", type=int, default=5,
+                    help="run the greedy benchmark for checkpoint selection every N iters")
+    ap.add_argument("--eval-games", type=int, default=12,
+                    help="greedy eval games per topology (Walls + Periodic)")
+    ap.add_argument("--eval-max-ticks", type=int, default=3000,
+                    help="tick budget per greedy eval game")
     ap.add_argument("--out", default="az.mlp")
     ap.add_argument(
         "--best-out",
@@ -199,25 +248,36 @@ def main():
                 idx = perm[s : s + args.batch]
                 last = train_step(net, optim, (feats[idx], policy_t[idx], value_t[idx]))
 
-        # Checkpoint on mean self-play score (food eaten), the real objective.
-        # Selecting on game length instead rewards the snake for surviving by
-        # circling without eating — the historic source of seed-lottery results.
-        is_best = mean_score > best_score
-        if is_best:
-            best_score = mean_score
-            best_iter = it
-            net.export(best_out)
+        # Checkpoint on the *greedy benchmark* (what we deploy), not on the
+        # stochastic, tick-capped self-play score: the latter stays high while
+        # the greedy policy collapses into circling, which is how earlier runs
+        # saved worse-than-final checkpoints and turned results into a seed
+        # lottery. Eval runs every --eval-every iters and on the final iter.
+        eval_str = ""
+        is_best = False
+        if it % args.eval_every == 0 or it == args.iterations - 1:
+            ev_walls, ev_torus, ev_mean, ev_ticks = eval_net(net, args)
+            eval_str = (
+                f"  eval[W {ev_walls:5.1f} P {ev_torus:5.1f} "
+                f"avg {ev_mean:5.1f} t {ev_ticks:5.0f}]"
+            )
+            is_best = ev_mean > best_score
+            if is_best:
+                best_score = ev_mean
+                best_iter = it
+                net.export(best_out)
 
         print(
-            f"iter {it:3d}  buffer {n:6d}  score {mean_score:5.2f}  "
-            f"ticks {mean_ticks:6.1f}  "
-            f"policy_loss {last[0]:.3f}  value_loss {last[1]:.3f}"
+            f"iter {it:3d}  buffer {n:6d}  sp_score {mean_score:5.2f}  "
+            f"sp_ticks {mean_ticks:6.1f}  "
+            f"ploss {last[0]:.3f}  vloss {last[1]:.3f}"
+            + eval_str
             + ("  [best]" if is_best else "")
         )
 
     net.export(args.out)
     print(f"exported policy/value net -> {args.out}")
-    print(f"best checkpoint (iter {best_iter}, score {best_score:.2f}) -> {best_out}")
+    print(f"best checkpoint (iter {best_iter}, eval_avg {best_score:.2f}) -> {best_out}")
 
 
 if __name__ == "__main__":
