@@ -133,11 +133,16 @@ mod bindings {
         };
         let dims = dims.unwrap_or_else(|| vec![FEATURE_COUNT, 32, 24, AZ_OUTPUTS]);
         let mlp = Mlp::from_params(&dims, params).map_err(PyValueError::new_err)?;
+        // Use `seed` for the *board* RNG too (not just action sampling), so
+        // each self-play game runs on a different board layout / food sequence.
+        // Previously the board was hardcoded to seed 0, so every game trained
+        // on a single board — the policy overfit it and circled on the unseen
+        // boards the benchmark uses (seeds 0..N).
         let config = snake_core::Config {
             width,
             height,
             boundary,
-            seed: 0,
+            seed,
         };
         // The game is pure Rust and touches no Python state → release the GIL
         // so threaded callers fan out across cores.

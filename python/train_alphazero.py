@@ -82,19 +82,16 @@ def collect_self_play(net, args, base_seed):
     return rows, mean_score, mean_ticks
 
 
-# Fixed eval seeds, disjoint from the training-seed range, so the greedy
-# benchmark is deterministic and comparable across iterations and runs.
-EVAL_SEED_BASE = 7_000_000
-
-
 def eval_net(net, args):
     """Greedy benchmark proxy used for checkpoint selection.
 
-    Plays `--eval-games` *greedy* (temperature 0) games per topology on fixed
-    seeds at the deployment tick budget, mirroring what `bench_mlp` measures.
-    Returns `(walls, torus, mean, ticks)` average scores; `mean` drives
-    selection. Unlike self-play this exposes circling collapse (high ticks,
-    low score), so the saved checkpoint matches the deployed objective.
+    Plays `--eval-games` *greedy* (temperature 0) games per topology on board
+    seeds `0..eval_games` — the exact seeds `bench_mlp`/`run_series` use — at
+    the deployment tick budget. Returns `(walls, torus, mean, ticks)` average
+    scores; `mean` drives selection. Training self-play uses board seeds
+    >= seed*1e6, so these eval boards stay held out. Unlike self-play this
+    exposes circling collapse (high ticks, low score), so the saved checkpoint
+    matches the deployed objective.
     """
     params = net.to_params()
     dims = net.get_dims()
@@ -108,7 +105,7 @@ def eval_net(net, args):
         return boundary, score, ticks
 
     jobs = [
-        (boundary, EVAL_SEED_BASE + i)
+        (boundary, i)
         for boundary in ("walls", "torus")
         for i in range(args.eval_games)
     ]
