@@ -397,3 +397,29 @@ dass man es Monate später noch versteht.
 - **7-Output-Roundtrip**: Der Export-Self-Check (Torch-Raw == Rust
   `mlp_forward`, Fehler ~1e-7) fängt Layout-Fehler des Policy+Value-Kopfs ab,
   bevor ein Trainingslauf verschwendet wird.
+- **max-ticks als Trainingsregler**: `--max-ticks 1500` erzeugt einen natürlichen
+  Sweet Spot: Die self-play Spiele werden auf 1500 Ticks begrenzt, was die
+  Schlange zum effizienten Fressen zwingt. Das optimale Fenster liegt bei
+  game_len ~700–900 (≈50–60 % des Limits). Darüber lernt die Schlange zu
+  kreisen statt zu fressen — erkennbar an avg_ticks >1000 im Benchmark.
+- **best.mlp ≠ bester Checkpoint**: Die Trainingskurve speichert best.mlp wenn
+  game_len ein neues Maximum erreicht. Aber maximale game_len im Self-Play
+  korreliert nicht perfekt mit dem Benchmark-Score — wenn die Schlange gut genug
+  überlebt um im Kreis zu fahren, steigt game_len obwohl die Policy schlechter
+  wird. Run 016 Seed 15 illustriert das deutlich: best.mlp (Periodic 69.7)
+  schlägt final.mlp (Periodic 57.6) erheblich.
+- **bench_mlp ohne Rebuild**: Ein neues `bench_mlp`-Example ermöglicht das
+  Benchmark einer beliebigen `.mlp`-Datei on the fly (`cargo run --release -p
+  snake-core --example bench_mlp training-out/.../best.mlp 50 8000 24`), ohne
+  das embedded Asset auszutauschen und neu zu kompilieren.
+- **Größeres Netz bringt nichts** (Run 017, 20→128→96→7, 15 751 Parameter):
+  Mit 150 Iterationen und lr=1e-3 kollabiert das Training sofort (Walls 32,
+  Periodic 44 vs. Baseline 37/65). Das Standard-Netz (1 639 Param) ist gut
+  dimensioniert für 20 Features und 6 Aktionen — überdimensionierte Netze
+  brauchen viel mehr Daten und ggf. kleinere LR.
+- **Seed-Sweep als Hauptoptimierungsstrategie**: Über Run 010–016 war die
+  effektivste Verbesserung stets ein breiterer Seed-Sweep. Run 015 Seed 5 und
+  Run 016 Seed 15 schlagen alle Hyperparameter-Variationen (mehr Iter, andere
+  eat_bonus, Zweiphasen-Training) deutlich. Erklärung: Die Verlustlandschaft hat
+  viele lokale Optima; Seed bestimmt den Initialisierungspunkt und damit welches
+  Optimum gefunden wird.
