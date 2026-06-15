@@ -97,13 +97,14 @@ mod bindings {
     /// Play one AlphaZero-light self-play game in Rust and return training
     /// samples `(features, policy_target, value_target)`.
     ///
-    /// `params` are the flat weights of the 7-output net `[20, 32, 24, 7]`
-    /// (same layout as the `.mlp` format). The MCTS is the exact same search
+    /// `params` are the flat weights of a 7-output MLP (same layout as the
+    /// `.mlp` format). `dims` specifies the layer sizes including input and
+    /// output (default `[20, 32, 24, 7]`). The MCTS is the exact same search
     /// `AlphaZeroLite` uses at inference, so the policy targets need no second
     /// implementation. The GIL is released during the (pure-Rust) game, so
     /// many self-play games can run in parallel from Python threads.
     #[pyfunction]
-    #[pyo3(signature = (params, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000, eat_bonus=0.3, sp_eat=1.0))]
+    #[pyo3(signature = (params, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000, eat_bonus=0.3, sp_eat=1.0, dims=None))]
     #[allow(clippy::too_many_arguments)]
     fn az_selfplay(
         py: Python<'_>,
@@ -117,6 +118,7 @@ mod bindings {
         max_ticks: u64,
         eat_bonus: f32,
         sp_eat: f32,
+        dims: Option<Vec<usize>>,
     ) -> PyResult<Vec<AzSampleRow>> {
         use snake_core::nn::{Mlp, FEATURE_COUNT};
         use snake_core::strategy::{self_play_with_rewards, AZ_OUTPUTS};
@@ -126,7 +128,7 @@ mod bindings {
             "torus" | "periodic" => BoundaryMode::Periodic,
             other => return Err(PyValueError::new_err(format!("bad boundary: {other:?}"))),
         };
-        let dims = [FEATURE_COUNT, 32, 24, AZ_OUTPUTS];
+        let dims = dims.unwrap_or_else(|| vec![FEATURE_COUNT, 32, 24, AZ_OUTPUTS]);
         let mlp = Mlp::from_params(&dims, params).map_err(PyValueError::new_err)?;
         let config = snake_core::Config {
             width,

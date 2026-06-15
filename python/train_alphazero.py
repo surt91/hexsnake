@@ -52,12 +52,15 @@ def collect_self_play(net, args, base_seed):
         ["walls", "torus"] if args.boundary == "mixed" else [args.boundary]
     )
 
+    dims = net.get_dims()
+
     def one(i):
         boundary = boundaries[i % len(boundaries)]
         return az_selfplay(
             params, boundary, 16, 12, args.sims, args.temperature,
             base_seed + i, args.max_ticks,
             args.eat_bonus, args.sp_eat,
+            dims,
         )
 
     rows = []
@@ -82,15 +85,16 @@ def train_step(net, optim, batch):
 
 
 def load_net_from_mlp(path: str) -> "AZNet":
-    """Warm-start an AZNet from an exported .mlp file."""
+    """Warm-start an AZNet from an exported .mlp file (any hidden size)."""
     with open(path, encoding="utf-8") as f:
         lines = [ln.strip() for ln in f if ln.strip()]
     dims = list(map(int, lines[1].split()))
+    hidden = tuple(dims[1:-1])  # strip input (20) and output (7) dims
     params: list[float] = []
     for line in lines[2:]:
         params.extend(float(v) for v in line.split())
 
-    net = AZNet()
+    net = AZNet(hidden=hidden)
     offset = 0
     for (W_param, b_param), in_dim, out_dim in zip(net._layers(), dims, dims[1:]):
         n_w = out_dim * in_dim
@@ -138,6 +142,14 @@ def main():
         metavar="MLP",
         help="warm-start from an existing .mlp file instead of random weights",
     )
+    ap.add_argument(
+        "--hidden",
+        type=int,
+        nargs="+",
+        default=[32, 24],
+        metavar="N",
+        help="hidden layer sizes (default: 32 24)",
+    )
     args = ap.parse_args()
 
     best_out = args.best_out or (args.out.removesuffix(".mlp") + ".best.mlp")
@@ -150,7 +162,7 @@ def main():
         net = load_net_from_mlp(args.load)
         print(f"loaded initial weights from {args.load}")
     else:
-        net = AZNet()
+        net = AZNet(hidden=tuple(args.hidden))
     export_self_check(net)
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
     buffer = deque(maxlen=args.buffer)

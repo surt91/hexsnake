@@ -1,10 +1,11 @@
 """PyTorch policy/value net for gradient-trained AlphaZero-light.
 
-One MLP `[20, 32, 24, 7]` (tanh hidden, linear head): outputs 0..6 are the
-policy logits over the six heading-relative actions, output 6 is the value.
-The tanh on the value and the (reverse-masked) softmax on the policy live on
-the **Rust** side (`AlphaZeroLite`), so the exported `.mlp` is just the three
-raw linear layers — identical layout to every other net in the project.
+MLP with configurable hidden layers `[20, *hidden, 7]` (tanh hidden, linear
+head): outputs 0..6 are the policy logits over the six heading-relative
+actions, output 6 is the value. The tanh on the value and the
+(reverse-masked) softmax on the policy live on the **Rust** side
+(`AlphaZeroLite`), so the exported `.mlp` is just the raw linear layers —
+identical layout to every other net in the project.
 
 Imports torch, so this module is only pulled in by the training script.
 """
@@ -17,7 +18,7 @@ import torch.nn as nn
 from .export import export_mlp
 
 FEATURE_COUNT = 20
-HIDDEN = (32, 24)
+DEFAULT_HIDDEN = (32, 24)
 OUTPUTS = 7
 #: Relative-direction index of the (masked) reverse move.
 REVERSE = 3
@@ -26,17 +27,19 @@ ACTIONS = [0, 1, 2, 4, 5]
 
 
 class AZNet(nn.Module):
-    def __init__(self):
+    def __init__(self, hidden: tuple[int, ...] = DEFAULT_HIDDEN):
         super().__init__()
-        self.l1 = nn.Linear(FEATURE_COUNT, HIDDEN[0])
-        self.l2 = nn.Linear(HIDDEN[0], HIDDEN[1])
-        self.head = nn.Linear(HIDDEN[1], OUTPUTS)
+        dims = (FEATURE_COUNT,) + tuple(hidden) + (OUTPUTS,)
+        self._linears = nn.ModuleList(
+            nn.Linear(dims[i], dims[i + 1]) for i in range(len(dims) - 1)
+        )
 
     def raw(self, x: torch.Tensor) -> torch.Tensor:
         """The raw 7-dim head output (what the Rust `.mlp` forward returns)."""
-        h = torch.tanh(self.l1(x))
-        h = torch.tanh(self.l2(h))
-        return self.head(h)
+        h = x
+        for layer in self._linears[:-1]:
+            h = torch.tanh(layer(h))
+        return self._linears[-1](h)
 
     def forward(self, x: torch.Tensor):
         out = self.raw(x)
@@ -44,12 +47,14 @@ class AZNet(nn.Module):
         value = torch.tanh(out[..., 6])
         return policy_logits, value
 
+    def get_dims(self) -> list[int]:
+        """Full dims list [input, hidden..., output] derived from layer shapes."""
+        dims = [lin.weight.shape[1] for lin in self._linears]
+        dims.append(self._linears[-1].weight.shape[0])
+        return dims
+
     def _layers(self):
-        return [
-            (self.l1.weight, self.l1.bias),
-            (self.l2.weight, self.l2.bias),
-            (self.head.weight, self.head.bias),
-        ]
+        return [(lin.weight, lin.bias) for lin in self._linears]
 
     def to_params(self) -> list[float]:
         """Flat weights in `.mlp` order (per layer: W[out,in] row-major, b)."""
