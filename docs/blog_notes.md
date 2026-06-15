@@ -423,3 +423,40 @@ dass man es Monate später noch versteht.
   eat_bonus, Zweiphasen-Training) deutlich. Erklärung: Die Verlustlandschaft hat
   viele lokale Optima; Seed bestimmt den Initialisierungspunkt und damit welches
   Optimum gefunden wird.
+
+## Phase 9 — AlphaZero-light: die Seed-Lotterie war ein Bug (Run 022–025)
+
+- **„Seed-Abhängigkeit" war zu großen Teilen kein Pech, sondern zwei Bugs.** Die
+  Vermutung, gute Seeds seien selten-aber-echt, hielt einer gezielten
+  Ein-Seed-Untersuchung nicht stand.
+- **Bug 1 — Checkpoint nach Überlebenszeit**: `best.mlp` wurde über
+  `avg_game_len` (Ticks/Spiel) gewählt, nicht über Score. Genau die unerwünschte
+  „sicher im Kreis fahren"-Policy maximiert game_len → der Trainer speicherte
+  bevorzugt den Kreis-Kollaps. Fix: Score (gefressenes Futter) aus dem Self-Play
+  nach Python zurückgeben (`SelfPlayResult`) und danach auswählen.
+- **Self-Play-Score genügt nicht als Auswahlkriterium**: Der mittlere
+  Self-Play-Score (stochastisch, bei `--max-ticks` gedeckelt) stieg auf 72,
+  während die *greedy* Policy im Benchmark Walls-Score 19 bei avg_ticks 4116
+  lieferte — sie kreiste. Stochastik + Tick-Deckel verschleiern den Kollaps, den
+  greedy Spiel sofort zeigt. Lehre: Checkpoints am *Deployment-Modus* (greedy)
+  messen, nicht am Trainings-Modus.
+- **Bug 2 — alles auf einem Board (der eigentliche Übeltäter)**: `az_selfplay`
+  setzte den Board-Seed hart auf 0. Self-Play sah also **immer dasselbe Board /
+  dieselbe Futter-Sequenz**, der Benchmark misst aber auf Seeds 0..N. Die Policy
+  überfittete Board 0 und fuhr auf unbekannten Boards im Kreis — *das* erzeugte
+  die scheinbare Seed-Lotterie. Aufgedeckt durch einen Widerspruch: Eine
+  benchmark-treue Eval ergab Walls 64, der echte Benchmark Walls 18 — fürs
+  *gleiche* Netz. Grund: Bei greedy Eval (Temperatur 0) ist der Aktions-RNG
+  ungenutzt, also waren alle Eval-Spiele auf Board 0 identisch. Fix:
+  Board-Seed pro Spiel variieren (Training divers, Eval auf 0..N wie der
+  Benchmark).
+- **Nach den Fixes ist „länger → schlechter" weg**: Mit Board-Vielfalt und
+  greedy-Eval-Auswahl plateaut die Kurve (avg ~55–60), statt zu kollabieren;
+  `eval_ticks` fällt auf ~1100 und bleibt dort (kein Kreisen). Ein *beliebiger*
+  Seed (1) erreicht jetzt zuverlässig Avg ~54 statt der früheren 40–45-Lotterie.
+- **Offener Rückstand ist topologiespezifisch**: Der gelernte Policy ist auf
+  Walls stärker als der alte Champion (44 vs. 41), auf Periodic schwächer
+  (63 vs. 76). Vermuteter Resthebel: ein **Hunger-Feature** (Ticks seit letztem
+  Futter), damit der Value-Kopf „kurz vorm Verhungern" überhaupt unterscheiden
+  kann — ohne das ist Kreisen für das Netz von effizientem Fressen lokal
+  ununterscheidbar.
