@@ -1,11 +1,12 @@
 """PyTorch policy/value net for gradient-trained AlphaZero-light.
 
-MLP with configurable hidden layers `[20, *hidden, 7]` (tanh hidden, linear
+MLP with configurable hidden layers `[21, *hidden, 7]` (tanh hidden, linear
 head): outputs 0..6 are the policy logits over the six heading-relative
 actions, output 6 is the value. The tanh on the value and the
 (reverse-masked) softmax on the policy live on the **Rust** side
 (`AlphaZeroLite`), so the exported `.mlp` is just the raw linear layers —
-identical layout to every other net in the project.
+identical layout to every other net in the project. The 21 inputs are the 20
+shared sensor features plus the AlphaZero hunger feature (`az_features`).
 
 Imports torch, so this module is only pulled in by the training script.
 """
@@ -17,7 +18,7 @@ import torch.nn as nn
 
 from .export import export_mlp
 
-FEATURE_COUNT = 20
+FEATURE_COUNT = 21  # 20 shared sensor features + 1 hunger feature
 DEFAULT_HIDDEN = (32, 24)
 OUTPUTS = 7
 #: Relative-direction index of the (masked) reverse move.

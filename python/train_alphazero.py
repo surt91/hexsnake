@@ -18,6 +18,7 @@ import argparse
 import os
 import random
 import tempfile
+import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
@@ -36,7 +37,7 @@ def export_self_check(net: AZNet) -> None:
     net.export(path)
     text = open(path, encoding="utf-8").read()
     os.remove(path)
-    x = np.random.randn(20).astype(np.float32)
+    x = np.random.randn(net.get_dims()[0]).astype(np.float32)
     with torch.no_grad():
         want = net.raw(torch.from_numpy(x)).numpy()
     got = np.asarray(mlp_forward(text, x.tolist()), dtype=np.float32)
@@ -187,6 +188,9 @@ def main():
                     help="greedy eval games per topology (Walls + Periodic)")
     ap.add_argument("--eval-max-ticks", type=int, default=3000,
                     help="tick budget per greedy eval game")
+    ap.add_argument("--max-hours", type=float, default=0.0,
+                    help="wall-clock budget in hours (0 = run all --iterations); "
+                         "stops after the current iteration once exceeded")
     ap.add_argument("--out", default="az.mlp")
     ap.add_argument(
         "--best-out",
@@ -227,6 +231,8 @@ def main():
 
     best_score = -1.0
     best_iter = -1
+    start_time = time.monotonic()
+    budget_s = args.max_hours * 3600.0
 
     for it in range(args.iterations):
         rows, mean_score, mean_ticks = collect_self_play(net, args, seed)
@@ -271,6 +277,11 @@ def main():
             + eval_str
             + ("  [best]" if is_best else "")
         )
+
+        if budget_s > 0.0 and time.monotonic() - start_time >= budget_s:
+            elapsed_h = (time.monotonic() - start_time) / 3600.0
+            print(f"reached --max-hours budget after iter {it} ({elapsed_h:.2f} h)")
+            break
 
     net.export(args.out)
     print(f"exported policy/value net -> {args.out}")

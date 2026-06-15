@@ -5,7 +5,7 @@ mod features;
 mod mlp;
 mod neat;
 
-pub use features::{features, FEATURE_COUNT};
+pub use features::{az_features, features, AZ_FEATURE_COUNT, FEATURE_COUNT};
 pub use mlp::Mlp;
 pub use neat::{ConnGene, Genome, Net, NodeGene, NodeKind};
 
