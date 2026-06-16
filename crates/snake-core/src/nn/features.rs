@@ -74,6 +74,28 @@ pub fn features(state: &GameState) -> Vec<f32> {
     out
 }
 
+/// Length of the AlphaZero feature vector: the shared [`FEATURE_COUNT`] plus
+/// one topology feature.
+pub const AZ_FEATURE_COUNT: usize = FEATURE_COUNT + 1;
+
+/// AlphaZero feature vector: the shared [`features`] plus a topology bit
+/// (`1.0` = bounded walls, `0.0` = periodic torus). Optimal play differs by
+/// topology — respecting edges on walls vs. wrapping freely on the torus — and
+/// the ray features only reveal it indirectly, so a net trained on mixed
+/// boundaries had to learn a compromise (run 027 drifted into a Walls
+/// specialist). The explicit bit lets one net condition policy and value on the
+/// topology. AlphaZero uses its own vector so the other strategies' 20-input
+/// nets stay untouched.
+pub fn az_features(state: &GameState) -> Vec<f32> {
+    use crate::board::BoundaryMode;
+    let mut out = features(state);
+    out.push(match state.board().boundary {
+        BoundaryMode::Walls => 1.0,
+        BoundaryMode::Periodic => 0.0,
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

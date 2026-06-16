@@ -17,7 +17,7 @@
 
 use crate::coords::Direction;
 use crate::game::{GameState, Status};
-use crate::nn::{features, Mlp};
+use crate::nn::{az_features, Mlp};
 use crate::strategy::{doomed_move, safe_moves, Strategy, StrategyDebug};
 
 /// Output dimension of the policy/value net (6 policy logits + 1 value).
@@ -85,7 +85,7 @@ impl AlphaZeroLite {
     /// Policy priors (softmax over the five non-reverse actions) and a value
     /// in [-1, 1] from the net.
     fn evaluate(&self, state: &GameState) -> ([f32; 6], f32) {
-        let out = self.mlp.forward(&features(state));
+        let out = self.mlp.forward(&az_features(state));
         let mut max = f32::NEG_INFINITY;
         for (a, &o) in out.iter().enumerate().take(6) {
             if a != REVERSE && o > max {
@@ -320,7 +320,7 @@ pub fn self_play_with_rewards(
                 policy[a] = v as f32 / total as f32;
             }
         }
-        steps.push((features(&state), policy));
+        steps.push((az_features(&state), policy));
 
         let action = sample_action(&visits, temperature, &mut rng);
         let score_before = state.score();
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn self_play_yields_well_formed_samples() {
-        use crate::nn::FEATURE_COUNT;
+        use crate::nn::AZ_FEATURE_COUNT;
         let mlp = AlphaZeroLite::embedded().mlp;
         let config = Config {
             seed: 5,
@@ -431,7 +431,7 @@ mod tests {
         assert!(!a.is_empty());
         assert_eq!(a.len(), b.len(), "same seed ⇒ identical self-play");
         for s in &a {
-            assert_eq!(s.features.len(), FEATURE_COUNT);
+            assert_eq!(s.features.len(), AZ_FEATURE_COUNT);
             assert!((-1.0..=1.0).contains(&s.value));
             assert_eq!(s.policy[REVERSE], 0.0, "reverse never gets visits");
             let sum: f32 = s.policy.iter().sum();
