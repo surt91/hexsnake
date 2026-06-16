@@ -74,23 +74,6 @@ pub fn features(state: &GameState) -> Vec<f32> {
     out
 }
 
-/// Length of the AlphaZero feature vector: the shared [`FEATURE_COUNT`] plus
-/// one hunger feature.
-pub const AZ_FEATURE_COUNT: usize = FEATURE_COUNT + 1;
-
-/// AlphaZero feature vector: the shared [`features`] plus a hunger signal
-/// (ticks since the last meal, normalized by the board area and clamped to
-/// `[0, 1]`). Hunger lets the value head distinguish a freshly-fed state from
-/// one that has been circling without eating — local sensors alone cannot,
-/// which let the policy collapse into safe circling. AlphaZero uses its own
-/// vector so the other strategies' 20-input nets stay untouched.
-pub fn az_features(state: &GameState) -> Vec<f32> {
-    let mut out = features(state);
-    let hunger = state.ticks_since_food() as f32 / state.board().num_cells() as f32;
-    out.push(hunger.min(1.0));
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

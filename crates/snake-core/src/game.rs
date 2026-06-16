@@ -55,10 +55,6 @@ pub struct GameState {
     food: Offset,
     score: u32,
     ticks: u64,
-    /// Ticks since the snake last ate (0 right after eating). Drives the
-    /// AlphaZero hunger feature so the value head can tell a freshly-fed state
-    /// from one that has been circling without eating.
-    ticks_since_food: u64,
     status: Status,
     rng: Pcg32,
 }
@@ -92,7 +88,6 @@ impl GameState {
             food: Offset::new(0, 0), // placeholder, respawned below
             score: 0,
             ticks: 0,
-            ticks_since_food: 0,
             status: Status::Running,
             rng: Pcg32::seed_from_u64(config.seed),
         };
@@ -135,11 +130,6 @@ impl GameState {
 
     pub fn ticks(&self) -> u64 {
         self.ticks
-    }
-
-    /// Ticks since the snake last ate (0 right after eating).
-    pub fn ticks_since_food(&self) -> u64 {
-        self.ticks_since_food
     }
 
     pub fn status(&self) -> Status {
@@ -210,12 +200,10 @@ impl GameState {
         self.snake.push_front(next);
         if grows {
             self.score += 1;
-            self.ticks_since_food = 0;
             self.respawn_food();
         } else {
             let removed = self.snake.pop_back().expect("snake is never empty");
             self.occupied[Self::cell_index_for(&self.board, removed)] = false;
-            self.ticks_since_food += 1;
         }
         self.ticks += 1;
     }

@@ -460,3 +460,27 @@ dass man es Monate später noch versteht.
   Futter), damit der Value-Kopf „kurz vorm Verhungern" überhaupt unterscheiden
   kann — ohne das ist Kreisen für das Netz von effizientem Fressen lokal
   ununterscheidbar.
+
+## Phase 9 — AlphaZero-light: Hunger-Feature getestet, verworfen (Run 026)
+
+- **Negatives Ergebnis sauber dokumentiert**: Das vermutete Hunger-Feature
+  (AZ-eigener 21-Input: 20 Sensoren + `ticks_since_food`/Fläche) wurde mit 6 h
+  Budget (21 721 Iterationen, Seed 1) trainiert — und ist **netto schlechter**
+  als Run 025 ohne Hunger: +2.2 Periodic (Rauschen), aber −7.6 Walls, −4.5 % im
+  Mittel (Bench 200 Spiele).
+- **Warum es nicht half**: Das Feature sollte Kreisen bekämpfen — aber der
+  Board-Seed-Fix (jedes Self-Play-Spiel ein eigenes Board) hatte das Kreisen
+  schon beseitigt. Hunger löste also kein offenes Problem, sondern machte die
+  Policy nur aggressiver beim Futter-Ansteuern: gut auf dem Torus, tödlich an
+  Wänden. Lehre: Erst prüfen, ob das Zielproblem überhaupt noch existiert, bevor
+  man ein Feature dagegen baut.
+- **6 h ≈ 3 h**: Die greedy-Eval plateaut nach ~2,5 h; weitere 12 000
+  Iterationen bringen kein neues Maximum. Immerhin kein Reward-Kollaps mehr
+  (dank der Run-024-Fixes) — nur Sättigung. Großes Compute-Budget ersetzt keinen
+  besseren Lernhebel.
+- **`--max-hours` als Trainer-Regler**: Wall-Clock-Budget statt fixer
+  Iterationszahl; da best.mlp laufend beim besten Eval gesichert wird, liefert
+  ein zeitbegrenzter Lauf trotzdem das beste Netz.
+- **Auswahl-Bias bemerkt**: Eval-Mittel `(W+P)/2` mit optimistischem
+  Periodic-Eval zieht die Checkpoint-Wahl zu Periodic-lastigen Netzen. Für
+  künftige balancierte Auswahl: `min(W,P)` oder Eval bei 8000 Ticks.

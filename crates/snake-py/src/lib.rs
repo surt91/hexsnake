@@ -123,7 +123,7 @@ mod bindings {
         sp_eat: f32,
         dims: Option<Vec<usize>>,
     ) -> PyResult<(Vec<AzSampleRow>, u32, u64)> {
-        use snake_core::nn::{Mlp, AZ_FEATURE_COUNT};
+        use snake_core::nn::{Mlp, FEATURE_COUNT};
         use snake_core::strategy::{self_play_with_rewards, AZ_OUTPUTS};
 
         let boundary = match boundary {
@@ -131,7 +131,7 @@ mod bindings {
             "torus" | "periodic" => BoundaryMode::Periodic,
             other => return Err(PyValueError::new_err(format!("bad boundary: {other:?}"))),
         };
-        let dims = dims.unwrap_or_else(|| vec![AZ_FEATURE_COUNT, 32, 24, AZ_OUTPUTS]);
+        let dims = dims.unwrap_or_else(|| vec![FEATURE_COUNT, 32, 24, AZ_OUTPUTS]);
         let mlp = Mlp::from_params(&dims, params).map_err(PyValueError::new_err)?;
         // Use `seed` for the *board* RNG too (not just action sampling), so
         // each self-play game runs on a different board layout / food sequence.
