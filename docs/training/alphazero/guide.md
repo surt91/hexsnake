@@ -11,6 +11,12 @@ Schritt-Reward** (Futter-Annäherung + Fress-Bonus), damit die Suche schon mit
 untrainiertem Value Futter ansteuert — sonst kollabiert die Policy zu „sicher
 im Kreis fahren". Gewählt wird der meistbesuchte Zug.
 
+> **AZ-eigener 21-Input** (`az_features`): die 20 geteilten Sensor-Features plus
+> ein **Topologie-Bit** (1.0 = Walls, 0.0 = Torus). Optimal-Spiel unterscheidet
+> sich je Rand; der Bit lässt *ein* Netz Policy/Value je Topologie konditionieren
+> (Run 029). Die geteilte `features` (20) und die NEAT/DQN/PPO/MLP-GA-Netze
+> bleiben unangetastet. Das deployte Netz ist **21→64→48→7** (`--hidden 64 48`).
+
 Strategie: `snake_core::strategy::AlphaZeroLite` (pur Rust, WASM-fähig,
 **Inferenz bleibt immer pur Rust/WASM**).
 
@@ -29,9 +35,9 @@ Strategie: `snake_core::strategy::AlphaZeroLite` (pur Rust, WASM-fähig,
 > mit demselben Budget (aktuell **24**). Beim Einbetten eines mit anderem
 > `--sims` trainierten Netzes den Wert in `alphazero.rs` angleichen.
 
-> **Eingecheckte Datei**: `crates/snake-core/assets/alphazero/best.mlp` ist
-> ein kurzer Gradienten-Smoke-Lauf (mixed, ~40 Iterationen) — funktionsfähig,
-> aber Smoke-Qualität.
+> **Eingecheckte Datei**: `crates/snake-core/assets/alphazero/best.mlp` ist das
+> Netz aus Run 029 (21→64→48→7, Seed 1) — Walls 53.0 / Periodic 75.5 / Avg 64.24
+> (200 Spiele).
 
 ## 2. Gradient-Training (empfohlen)
 
@@ -60,9 +66,18 @@ uv run --extra train python train_alphazero.py \
   --epochs 4 \
   --boundary mixed \
   --seed 1 \
+  --hidden 64 48 --lr 5e-4 \
   --eval-every 5 --eval-games 20 --eval-max-ticks 4000 \
   --out az.mlp
 ```
+
+- `--hidden 64 48` ist die aktuelle Architektur (21→64→48→7); mit dem
+  Topologie-Bit braucht das Netz die Kapazität, um beide Topologien zu meistern
+  (kleineres Netz spezialisiert sich nur — Run 028 vs. 029). LR 5e-4 für das
+  größere Netz.
+- `--max-hours N` begrenzt per Wall-Clock statt Iterationszahl; best.mlp wird
+  laufend beim besten Eval gesichert. Hinweis: Das Training **plateaut früh**
+  (~15–40 min) — sehr lange Läufe bringen wenig (Run 025/027/029).
 
 - Self-Play parallelisiert über `--workers` (Default = alle Cores), da der
   GIL während der Rust-Suche freigegeben wird.

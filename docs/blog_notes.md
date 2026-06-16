@@ -498,3 +498,26 @@ dass man es Monate später noch versteht.
   das *beide* Topologien dominiert, scheint mit dieser Architektur/Reward schwer
   erreichbar; ein topologiespezifisches oder per-`min(W,P)` ausgewähltes Netz
   wäre der nächste Schritt.
+
+## Phase 9 — AlphaZero-light: Topologie-Bit + Kapazität (Run 028/029)
+
+- **Information ohne Kapazität reicht nicht**: Ein Topologie-Bit (1.0 Walls /
+  0.0 Torus) als 21. AZ-Input *allein* (Run 028, Standardnetz 21→32→24→7)
+  verbesserte nichts — es verschob die Balance nur Richtung Walls (Walls +10 %,
+  Periodic −20 %, Avg −8.6 %). Das Standardnetz nutzte die neue Info zur
+  *Spezialisierung*, nicht um beide Topologien zu meistern.
+- **Bit + größeres Netz = der Durchbruch**: Erst mit mehr Kapazität (Run 029,
+  21→**64→48**→7, ~4 900 Params, lr 5e-4) spielte *ein* Netz beide Topologien
+  gut: Walls 53.0 **und** Periodic 75.5 (Avg 64.24) — Walls +16 % gegenüber dem
+  no-topology-Champion Run 027, Avg +3.5 %. Deployed. Lehre: Konditionierungs-
+  Information und Modellkapazität sind komplementär — einzeln nutzlos, zusammen
+  der Hebel.
+- **Run 017 war kein Beweis gegen größere Netze**: „Größeres Netz bringt nichts"
+  (Run 017) galt nur im alten Kontext (Board-Seed-0-Overfit, 150 Iterationen).
+  Mit Board-Vielfalt + Topologie-Bit *und* genügend Iterationen zieht die
+  Kapazität. Negativergebnisse sind kontextabhängig — bei geänderten Bedingungen
+  neu prüfen.
+- **AZ-eigener Feature-Vektor zahlt sich aus**: Sowohl Hunger (verworfen) als
+  auch Topologie (behalten) liefen über `az_features` (21-Input), ohne die
+  geteilte `features` (20) oder die NEAT/DQN/PPO/MLP-GA-Netze anzufassen. Ein
+  Experiment-Feature pro Strategie zu isolieren hielt die Iteration billig.
