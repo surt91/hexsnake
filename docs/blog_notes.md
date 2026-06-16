@@ -484,3 +484,17 @@ dass man es Monate später noch versteht.
 - **Auswahl-Bias bemerkt**: Eval-Mittel `(W+P)/2` mit optimistischem
   Periodic-Eval zieht die Checkpoint-Wahl zu Periodic-lastigen Netzen. Für
   künftige balancierte Auswahl: `min(W,P)` oder Eval bei 8000 Ticks.
+- **6 h ohne Hunger (Run 027): Plateau bestätigt, kleiner Gewinn**: Dieselbe
+  Konfiguration ohne Hunger, aber mit 6 h Budget (19 826 Iterationen) findet das
+  beste Netz schon nach ~15 min (iter 815) und verbessert sich danach nicht mehr
+  im Eval-Mittel. Das Netz schlägt Run 025 leicht (Avg 62.09 vs 60.33, +8 %
+  Periodic, −5 % Walls) und wurde deployed. Lehre: Bei früher Sättigung bringt
+  10–40× mehr Compute fast nichts — der Hebel ist die Auswahl-/Reward-Struktur,
+  nicht die Laufzeit.
+- **Policy driftet zum Spezialisten**: Über die 6 h wird der *finale* Checkpoint
+  ein extremer Walls-Spezialist (Walls 63.1, aber Periodic nur 57.5), während
+  das deployte frühe best.mlp ausgewogener ist (45.7/78.4). Dasselbe Seed,
+  dieselbe Reward — nur längeres Training kippt die Balance. Ein einzelnes Netz,
+  das *beide* Topologien dominiert, scheint mit dieser Architektur/Reward schwer
+  erreichbar; ein topologiespezifisches oder per-`min(W,P)` ausgewähltes Netz
+  wäre der nächste Schritt.
