@@ -135,6 +135,12 @@ eine Treppe von „Evolution ohne Gradienten" bis „modernes RL":
   Python gegen die echte Rust-Engine (kein Drift), Gewichts-Export in ein
   simples Format, Inferenz weiterhin pur in Rust/WASM. Optional: Brett als
   Gitter-Tensor + CNN-Input statt der 6 Sensorstrahlen.
+- **Conv-Netz (ganzes Brett)**: Eine eigene Strategie sieht das komplette Feld
+  als Gitter-Tensor und faltet es mit einem **Hex-Kernel** (Zentrum + 6
+  Nachbarn). Die Inferenz ist eine handgeschriebene Faltung in purem Rust/WASM
+  (kein ONNX-Runtime), größenunabhängig per Kopfzellen-Readout + Global-Pool.
+  Zwei Varianten: eigenständige Policy und ein AlphaZero, das dieses Conv-Netz
+  als Policy/Value-Netz nutzt. Plan: `plan/02_cnn.md`.
 - **AlphaZero-light** (optional, anspruchsvollste Stufe): Policy/Value-Netz
   ersetzt die Zufalls-Rollouts des Monte-Carlo-Lookahead, trainiert per
   Self-Play — große Synergie mit der vorhandenen MCTS-Strategie.

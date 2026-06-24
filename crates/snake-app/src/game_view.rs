@@ -6,9 +6,10 @@ use eframe::egui::{
     epaint::PathStroke, Align2, Color32, ComboBox, CornerRadius, FontId, Key, Painter, Pos2, Rect,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
 };
-use snake_core::nn::{NeatNet, NeuralNet};
+use snake_core::nn::{ConvNet, NeatNet, NeuralNet};
 use snake_core::strategy::{
-    AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
+    AlphaZeroConv, AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner,
+    SpaceKeeper,
 };
 use snake_core::{
     Board, BoundaryMode, Config, Direction, GameState, Recorder, Replay, Status, Strategy,
@@ -100,6 +101,8 @@ fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<B
         StrategyChoice::Dqn => Some(Box::new(NeuralNet::embedded_dqn())),
         StrategyChoice::Ppo => Some(Box::new(NeuralNet::embedded_ppo())),
         StrategyChoice::AlphaZero => Some(Box::new(AlphaZeroLite::embedded())),
+        StrategyChoice::ConvNet => Some(Box::new(ConvNet::embedded())),
+        StrategyChoice::AlphaZeroConv => Some(Box::new(AlphaZeroConv::embedded())),
     }
 }
 

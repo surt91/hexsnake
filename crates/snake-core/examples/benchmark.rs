@@ -3,10 +3,10 @@
 //! Usage: cargo run --release -p snake-core --example benchmark [games] [max_ticks]
 
 use snake_core::benchmark::run_series;
-use snake_core::nn::{NeatNet, NeuralNet};
+use snake_core::nn::{ConvNet, NeatNet, NeuralNet};
 use snake_core::strategy::{
-    AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner, SpaceKeeper,
-    Strategy,
+    AlphaZeroConv, AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner,
+    SpaceKeeper, Strategy,
 };
 use snake_core::{Board, BoundaryMode, Config};
 
@@ -45,6 +45,11 @@ fn main() {
         (
             "AlphaZero-light",
             Box::new(|_| Box::new(AlphaZeroLite::embedded())),
+        ),
+        ("Conv-Netz", Box::new(|_| Box::new(ConvNet::embedded()))),
+        (
+            "AlphaZero-Conv",
+            Box::new(|_| Box::new(AlphaZeroConv::embedded())),
         ),
     ];
 

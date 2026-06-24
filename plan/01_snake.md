@@ -299,6 +299,11 @@ Behavior Cloning wurde bewusst weggelassen.
 **Done wenn:** GA/ES, NEAT, DQN und PPO sind im Browser wählbar und
 der Benchmark zeigt eine Vergleichstabelle.
 
+> **Erweiterung:** Die einbettbare **Conv-Netz**-Strategie (ganzes Brett als
+> Hex-Gitter-Tensor, pure-Rust/WASM-Faltung) — eigenständig **und** als
+> AlphaZero-Backbone — ist in [`plan/02_cnn.md`](02_cnn.md) geplant. Sie kehrt
+> die frühere Entscheidung um, CNN-Policies nicht nach WASM einzubetten.
+
 ## Spätere Ausbaustufen (bewusst nicht geplant)
 
 - **Spezialfutter**: goldener Apfel (Bonuspunkte, despawnt nach Timeout),

@@ -94,6 +94,61 @@ mod bindings {
         Ok(mlp.forward(&input))
     }
 
+    /// Run `snake-core`'s hex-conv forward pass on a `.cnn` text over explicit
+    /// input planes (`in_channels × height × width`, channel-major then
+    /// row-major). `head_idx` is `row*width + col` of the read-out cell. Lets
+    /// the Python roundtrip check the exact conv/readout/pool layout against the
+    /// real Rust inference, independent of torch.
+    #[pyfunction]
+    #[pyo3(signature = (text, planes, width, height, head_idx, boundary="walls"))]
+    fn cnn_forward(
+        text: &str,
+        planes: Vec<f32>,
+        width: usize,
+        height: usize,
+        head_idx: usize,
+        boundary: &str,
+    ) -> PyResult<Vec<f32>> {
+        let boundary = parse_boundary(boundary)?;
+        let net = snake_core::nn::HexConv::from_text(text).map_err(PyValueError::new_err)?;
+        Ok(net.forward_planes(&planes, width, height, boundary, head_idx))
+    }
+
+    /// For each cell (row-major) return its six hex-neighbor indices in
+    /// `Direction::ALL` order, with `-1` for off-board neighbors (walls). The
+    /// Python hex-conv model uses this table so its neighbor geometry matches
+    /// the Rust convolution exactly instead of reimplementing the hex math.
+    #[pyfunction]
+    #[pyo3(signature = (width, height, boundary="walls"))]
+    fn neighbor_table(width: i32, height: i32, boundary: &str) -> PyResult<Vec<i64>> {
+        use snake_core::Direction;
+        let boundary = parse_boundary(boundary)?;
+        let board = snake_core::Board::new(width, height, boundary);
+        let mut out = Vec::with_capacity((width * height) as usize * 6);
+        for row in 0..height {
+            for col in 0..width {
+                let cell = snake_core::Offset::new(col, row);
+                for dir in Direction::ALL {
+                    out.push(
+                        board
+                            .neighbor(cell, dir)
+                            .map(|n| (n.row * width + n.col) as i64)
+                            .unwrap_or(-1),
+                    );
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn parse_boundary(s: &str) -> PyResult<BoundaryMode> {
+        match s {
+            "walls" => Ok(BoundaryMode::Walls),
+            "torus" | "periodic" => Ok(BoundaryMode::Periodic),
+            other => Err(PyValueError::new_err(format!("bad boundary: {other:?}"))),
+        }
+    }
+
     /// Play one AlphaZero-light self-play game in Rust and return
     /// `(rows, score, ticks)`, where `rows` are training samples
     /// `(features, policy_target, value_target)` and `score`/`ticks` are the
@@ -170,6 +225,8 @@ mod bindings {
     fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyEnv>()?;
         m.add_function(wrap_pyfunction!(mlp_forward, m)?)?;
+        m.add_function(wrap_pyfunction!(cnn_forward, m)?)?;
+        m.add_function(wrap_pyfunction!(neighbor_table, m)?)?;
         m.add_function(wrap_pyfunction!(az_selfplay, m)?)?;
         m.add("NUM_ACTIONS", ACTIONS)?;
         Ok(())

@@ -58,6 +58,44 @@ def _linear_layers(module) -> list[Layer]:
     return out
 
 
+CNN_MAGIC = "hexsnake-cnn v1"
+
+
+def export_cnn(path: str, model) -> None:
+    """Write a `HexConvNet` to `path` in the `.cnn` text format.
+
+    Layout matches `crates/snake-core/src/nn/conv.rs`: per conv layer the
+    `out×in×7` kernel (row-major `[o][i][tap]`) then the `out` biases, in layer
+    order; then the dense head's `Mlp` params (each `nn.Linear` as row-major
+    `(out, in)` weights then bias). `verify_cnn_roundtrip.py` checks this layout
+    against the real Rust forward pass.
+    """
+    params: list[float] = []
+    for w, b in zip(model.convs, model.conv_bias):
+        params.extend(np.asarray(w.detach().cpu(), dtype=np.float32).reshape(-1).tolist())
+        params.extend(np.asarray(b.detach().cpu(), dtype=np.float32).reshape(-1).tolist())
+    for lin in model.head:
+        params.extend(
+            np.asarray(lin.weight.detach().cpu(), dtype=np.float32).reshape(-1).tolist()
+        )
+        params.extend(
+            np.asarray(lin.bias.detach().cpu(), dtype=np.float32).reshape(-1).tolist()
+        )
+
+    lines = [CNN_MAGIC, f"channels {model.in_channels}"]
+    lines += [f"conv {i} {o}" for i, o in model.conv_shapes]
+    lines.append("head " + " ".join(str(d) for d in model.head_dims))
+    lines.append("params")
+    for i in range(0, len(params), 16):
+        lines.append(" ".join(repr(float(p)) for p in params[i : i + 16]))
+
+    import os
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def from_ppo(model) -> list[Layer]:
     """Layers of an SB3 PPO MlpPolicy: shared/policy net + the action head.
 

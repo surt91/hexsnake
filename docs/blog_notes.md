@@ -521,3 +521,33 @@ dass man es Monate später noch versteht.
   auch Topologie (behalten) liefen über `az_features` (21-Input), ohne die
   geteilte `features` (20) oder die NEAT/DQN/PPO/MLP-GA-Netze anzufassen. Ein
   Experiment-Feature pro Strategie zu isolieren hielt die Iteration billig.
+
+## Phase 10 — CNN-Strategie (ganzes Brett als Input)
+
+- **Faltung auf dem Hexgitter = 7-tap statt 3×3**: Ein quadratischer Kernel
+  passt nicht; der natürliche Hex-Kernel ist Zentrum + 6 Nachbarn. Der Clou:
+  `Board::neighbor()` macht das Boundary-Handling schon richtig (Wand → Zero-Pad,
+  Torus → Wrap), sodass die Faltung ohne Sonderfall deterministisch *und*
+  torus-korrekt ist. Dieselbe Primitive trägt Spiellogik, Sensorstrahlen und
+  jetzt die Faltung — ein Beleg dafür, dass die deterministische, UI-freie
+  Core-Schicht sich auszahlt.
+- **Global Pooling macht positionsblind**: Der naheliegende Weg zur
+  Größenunabhängigkeit (Conv-Stack → globales Average-Pooling → Dense) wirft
+  genau die Information weg, die Snake braucht: *wo* Kopf, Körper, Futter sind.
+  Lösung ohne fixe Brettgröße: nach dem Conv-Stack den Feature-Vektor *an der
+  Kopfzelle* auslesen (lokaler Kontext) **und** global poolen (Bilanz), beides
+  konkatenieren. Größenagnostisch und trotzdem ortssensitiv.
+- **Absolut vs. heading-relativ — der Bruch mit den Sensor-Netzen**: Alle
+  bisherigen Netze sind rotationsinvariant (Index 0 = geradeaus). Ein Grid-CNN
+  ist zwangsläufig absolut (Nord ist Nord). Damit AlphaZeros MCTS (`rotated_cw`,
+  REVERSE-Index) unangetastet bleibt, werden die 6 absoluten Policy-Logits per
+  Heading in den relativen Frame zurückrotiert — die Suche merkt nichts vom
+  Wechsel der Eingaberepräsentation.
+- **Eine umgekehrte Entscheidung, bewusst dokumentiert**: Ursprünglich war
+  „CNN-Policies nicht nach WASM einbetten, pure-Rust-Conv außerhalb des Scopes"
+  (dqn/guide.md §6). Eine handgeschriebene Conv-Inferenz ist aber nur
+  unwesentlich mehr Code als `Mlp::forward` (verschachtelte Schleifen) und passt
+  zur Tiny-/Pur-Rust-Philosophie besser als tract/candle/ort, die nach
+  `wasm32-unknown-unknown` ohnehin sperrig sind. Schwergewichtige
+  Inferenz-Crates hätten hier ihren Platz nicht verdient.
+  Experiment-Feature pro Strategie zu isolieren hielt die Iteration billig.

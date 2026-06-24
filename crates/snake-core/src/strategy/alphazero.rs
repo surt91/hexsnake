@@ -17,7 +17,7 @@
 
 use crate::coords::Direction;
 use crate::game::{GameState, Status};
-use crate::nn::{az_features, Mlp};
+use crate::nn::{az_features, HexConv, Mlp};
 use crate::strategy::{doomed_move, safe_moves, Strategy, StrategyDebug};
 
 /// Output dimension of the policy/value net (6 policy logits + 1 value).
@@ -83,160 +83,181 @@ impl AlphaZeroLite {
     }
 
     /// Policy priors (softmax over the five non-reverse actions) and a value
-    /// in [-1, 1] from the net.
+    /// in [-1, 1] from the MLP net.
     fn evaluate(&self, state: &GameState) -> ([f32; 6], f32) {
-        let out = self.mlp.forward(&az_features(state));
-        let mut max = f32::NEG_INFINITY;
-        for (a, &o) in out.iter().enumerate().take(6) {
-            if a != REVERSE && o > max {
-                max = o;
-            }
-        }
-        let mut priors = [0.0f32; 6];
-        let mut sum = 0.0;
-        for a in 0..6 {
-            if a != REVERSE {
-                let e = (out[a] - max).exp();
-                priors[a] = e;
-                sum += e;
-            }
-        }
-        if sum > 0.0 {
-            for p in &mut priors {
-                *p /= sum;
-            }
-        }
-        (priors, out[AZ_OUTPUTS - 1].tanh())
-    }
-
-    /// PUCT action selection at an expanded node.
-    fn select(node: &Node) -> usize {
-        let total: u32 = node.n.iter().sum();
-        let sqrt_total = ((total as f32) + 1.0).sqrt();
-        let mut best = (f32::NEG_INFINITY, 0usize);
-        for a in 0..6 {
-            if a == REVERSE {
-                continue;
-            }
-            let q = if node.n[a] > 0 {
-                node.w[a] / node.n[a] as f32
-            } else {
-                0.0
-            };
-            let u = C_PUCT * node.priors[a] * sqrt_total / (1.0 + node.n[a] as f32);
-            let score = q + u;
-            if score > best.0 {
-                best = (score, a);
-            }
-        }
-        best.1
+        // The MLP already emits heading-relative logits + value.
+        softmax_value(&self.mlp.forward(&az_features(state)))
     }
 
     /// Run the tree search from `root`; returns per-action visit counts.
     fn search(&self, root: &GameState) -> [u32; 6] {
-        let mut arena: Vec<Node> = vec![Node::leaf(root.clone(), false)];
-        for _ in 0..self.sims {
-            let mut path: Vec<(usize, usize)> = Vec::new();
-            let mut idx = 0usize;
-            let value;
-            loop {
-                if arena[idx].terminal {
-                    value = -1.0;
-                    break;
-                }
-                if !arena[idx].expanded {
-                    let (p, v) = self.evaluate(&arena[idx].state);
-                    arena[idx].priors = p;
-                    arena[idx].expanded = true;
-                    value = v;
-                    break;
-                }
-                let a = Self::select(&arena[idx]);
-                path.push((idx, a));
-                let child = arena[idx].child[a];
-                if child < 0 {
-                    // Expand: apply the action to a cloned state. Distance to
-                    // the food before the move drives the approach shaping.
-                    let dist_before = {
-                        let p = &arena[idx].state;
-                        p.board().distance(p.head(), p.food())
-                    };
-                    let mut s = arena[idx].state.clone();
-                    let dir = s.direction().rotated_cw(a as u8);
-                    let score_before = s.score();
-                    s.tick(Some(dir));
-                    let terminal = s.status() != Status::Running;
-                    let new_idx = arena.len();
-                    let ate = s.score() > score_before;
-                    let won = s.status() == Status::Won;
-                    // Dense per-step reward folded into the edge value, so the
-                    // search prefers food-ward moves even with an untrained
-                    // value head (otherwise the policy collapses to circling).
-                    let shaped = if ate {
-                        self.eat_bonus
-                    } else if !terminal {
-                        let d = s.board().distance(s.head(), s.food());
-                        0.1 * (dist_before as f32 - d as f32)
-                    } else {
-                        0.0
-                    };
-                    arena.push(Node::leaf(s, terminal));
-                    arena[idx].child[a] = new_idx as i32;
-                    value = if terminal {
-                        if won {
-                            1.0
-                        } else {
-                            -1.0
-                        }
-                    } else {
-                        let (p, v) = self.evaluate(&arena[new_idx].state);
-                        arena[new_idx].priors = p;
-                        arena[new_idx].expanded = true;
-                        (v + shaped).clamp(-1.0, 1.0)
-                    };
-                    break;
-                }
-                idx = child as usize;
-            }
-            for (nidx, a) in path {
-                arena[nidx].n[a] += 1;
-                arena[nidx].w[a] += value;
-            }
-        }
-        arena[0].n
+        run_search(root, self.sims, self.eat_bonus, &|s| self.evaluate(s))
     }
+}
+
+/// Turn `AZ_OUTPUTS` raw values — six heading-relative policy logits plus a
+/// value — into softmax priors (over the five non-reverse actions) and a
+/// `tanh`-squashed value. Shared by the MLP and conv evaluators.
+fn softmax_value(out: &[f32]) -> ([f32; 6], f32) {
+    let mut max = f32::NEG_INFINITY;
+    for (a, &o) in out.iter().enumerate().take(6) {
+        if a != REVERSE && o > max {
+            max = o;
+        }
+    }
+    let mut priors = [0.0f32; 6];
+    let mut sum = 0.0;
+    for a in 0..6 {
+        if a != REVERSE {
+            let e = (out[a] - max).exp();
+            priors[a] = e;
+            sum += e;
+        }
+    }
+    if sum > 0.0 {
+        for p in &mut priors {
+            *p /= sum;
+        }
+    }
+    (priors, out[AZ_OUTPUTS - 1].tanh())
+}
+
+/// PUCT action selection at an expanded node.
+fn select(node: &Node) -> usize {
+    let total: u32 = node.n.iter().sum();
+    let sqrt_total = ((total as f32) + 1.0).sqrt();
+    let mut best = (f32::NEG_INFINITY, 0usize);
+    for a in 0..6 {
+        if a == REVERSE {
+            continue;
+        }
+        let q = if node.n[a] > 0 {
+            node.w[a] / node.n[a] as f32
+        } else {
+            0.0
+        };
+        let u = C_PUCT * node.priors[a] * sqrt_total / (1.0 + node.n[a] as f32);
+        let score = q + u;
+        if score > best.0 {
+            best = (score, a);
+        }
+    }
+    best.1
+}
+
+/// Run the policy/value MCTS from `root` and return per-action visit counts.
+/// `evaluate` maps a state to (relative priors, value); the MLP and conv
+/// strategies share this exact search, only differing in that closure.
+fn run_search<F>(root: &GameState, sims: u32, eat_bonus: f32, evaluate: &F) -> [u32; 6]
+where
+    F: Fn(&GameState) -> ([f32; 6], f32),
+{
+    let mut arena: Vec<Node> = vec![Node::leaf(root.clone(), false)];
+    for _ in 0..sims {
+        let mut path: Vec<(usize, usize)> = Vec::new();
+        let mut idx = 0usize;
+        let value;
+        loop {
+            if arena[idx].terminal {
+                value = -1.0;
+                break;
+            }
+            if !arena[idx].expanded {
+                let (p, v) = evaluate(&arena[idx].state);
+                arena[idx].priors = p;
+                arena[idx].expanded = true;
+                value = v;
+                break;
+            }
+            let a = select(&arena[idx]);
+            path.push((idx, a));
+            let child = arena[idx].child[a];
+            if child < 0 {
+                // Expand: apply the action to a cloned state. Distance to
+                // the food before the move drives the approach shaping.
+                let dist_before = {
+                    let p = &arena[idx].state;
+                    p.board().distance(p.head(), p.food())
+                };
+                let mut s = arena[idx].state.clone();
+                let dir = s.direction().rotated_cw(a as u8);
+                let score_before = s.score();
+                s.tick(Some(dir));
+                let terminal = s.status() != Status::Running;
+                let new_idx = arena.len();
+                let ate = s.score() > score_before;
+                let won = s.status() == Status::Won;
+                // Dense per-step reward folded into the edge value, so the
+                // search prefers food-ward moves even with an untrained
+                // value head (otherwise the policy collapses to circling).
+                let shaped = if ate {
+                    eat_bonus
+                } else if !terminal {
+                    let d = s.board().distance(s.head(), s.food());
+                    0.1 * (dist_before as f32 - d as f32)
+                } else {
+                    0.0
+                };
+                arena.push(Node::leaf(s, terminal));
+                arena[idx].child[a] = new_idx as i32;
+                value = if terminal {
+                    if won {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                } else {
+                    let (p, v) = evaluate(&arena[new_idx].state);
+                    arena[new_idx].priors = p;
+                    arena[new_idx].expanded = true;
+                    (v + shaped).clamp(-1.0, 1.0)
+                };
+                break;
+            }
+            idx = child as usize;
+        }
+        for (nidx, a) in path {
+            arena[nidx].n[a] += 1;
+            arena[nidx].w[a] += value;
+        }
+    }
+    arena[0].n
+}
+
+/// From per-action visit counts, pick the most-visited *safe* move and record
+/// the visit distribution in `debug`. Shared by both AlphaZero strategies.
+fn most_visited_safe(state: &GameState, visits: &[u32; 6], debug: &mut StrategyDebug) -> Direction {
+    let heading = state.direction();
+    debug.move_scores.clear();
+    for (a, &v) in visits.iter().enumerate() {
+        if a != REVERSE {
+            debug
+                .move_scores
+                .push((heading.rotated_cw(a as u8), f64::from(v)));
+        }
+    }
+
+    let safe: Vec<Direction> = safe_moves(state).into_iter().map(|(d, _)| d).collect();
+    let mut best: Option<(Direction, u32)> = None;
+    for (a, &v) in visits.iter().enumerate() {
+        if a == REVERSE {
+            continue;
+        }
+        let dir = heading.rotated_cw(a as u8);
+        if !safe.contains(&dir) {
+            continue;
+        }
+        if best.is_none_or(|(_, bn)| v > bn) {
+            best = Some((dir, v));
+        }
+    }
+    best.map(|(d, _)| d).unwrap_or_else(|| doomed_move(state))
 }
 
 impl Strategy for AlphaZeroLite {
     fn next_move(&mut self, state: &GameState) -> Direction {
         let visits = self.search(state);
-        let heading = state.direction();
-
-        self.debug.move_scores.clear();
-        for (a, &v) in visits.iter().enumerate() {
-            if a != REVERSE {
-                self.debug
-                    .move_scores
-                    .push((heading.rotated_cw(a as u8), f64::from(v)));
-            }
-        }
-
-        // Pick the most-visited move among the immediately safe ones.
-        let safe: Vec<Direction> = safe_moves(state).into_iter().map(|(d, _)| d).collect();
-        let mut best: Option<(Direction, u32)> = None;
-        for (a, &v) in visits.iter().enumerate() {
-            if a == REVERSE {
-                continue;
-            }
-            let dir = heading.rotated_cw(a as u8);
-            if !safe.contains(&dir) {
-                continue;
-            }
-            if best.is_none_or(|(_, bn)| v > bn) {
-                best = Some((dir, v));
-            }
-        }
-        best.map(|(d, _)| d).unwrap_or_else(|| doomed_move(state))
+        most_visited_safe(state, &visits, &mut self.debug)
     }
 
     fn debug(&self) -> Option<&StrategyDebug> {
@@ -246,6 +267,69 @@ impl Strategy for AlphaZeroLite {
 
 /// Embedded AlphaZero-light policy/value net (`.mlp`, 7 outputs).
 pub const EMBEDDED_AZ: &str = include_str!("../../assets/alphazero/best.mlp");
+
+/// AlphaZero-light driven by a **convolutional** policy/value net: the exact
+/// same MCTS as [`AlphaZeroLite`], but leaves are evaluated by a [`HexConv`]
+/// that sees the whole board. The conv head emits six *absolute* policy logits
+/// plus a value; they are rotated into the heading-relative frame so the shared
+/// search ([`run_search`]) is reused unchanged.
+pub struct AlphaZeroConv {
+    net: HexConv,
+    sims: u32,
+    eat_bonus: f32,
+    debug: StrategyDebug,
+}
+
+impl AlphaZeroConv {
+    pub fn new(net: HexConv, sims: u32) -> Self {
+        Self {
+            net,
+            sims,
+            eat_bonus: 0.3,
+            debug: StrategyDebug::default(),
+        }
+    }
+
+    /// The checked-in embedded conv policy/value net (see
+    /// `docs/training/cnn/guide.md`).
+    pub fn embedded() -> Self {
+        let net = HexConv::from_text(EMBEDDED_AZ_CONV).expect("embedded AlphaZero-conv must parse");
+        Self::new(net, 24)
+    }
+
+    /// Relative priors + value from the conv net: forward gives six absolute
+    /// logits (indexed by `Direction::ALL`) plus a value; rotate them into the
+    /// heading-relative frame, then share [`softmax_value`].
+    fn evaluate(&self, state: &GameState) -> ([f32; 6], f32) {
+        let out = self.net.forward(state);
+        let heading = state.direction();
+        let mut rel = [0.0f32; AZ_OUTPUTS];
+        for (a, slot) in rel.iter_mut().enumerate().take(6) {
+            let dir = heading.rotated_cw(a as u8);
+            let idx = Direction::ALL
+                .iter()
+                .position(|d| *d == dir)
+                .expect("direction is in ALL");
+            *slot = out[idx];
+        }
+        rel[AZ_OUTPUTS - 1] = out[6];
+        softmax_value(&rel)
+    }
+}
+
+impl Strategy for AlphaZeroConv {
+    fn next_move(&mut self, state: &GameState) -> Direction {
+        let visits = run_search(state, self.sims, self.eat_bonus, &|s| self.evaluate(s));
+        most_visited_safe(state, &visits, &mut self.debug)
+    }
+
+    fn debug(&self) -> Option<&StrategyDebug> {
+        Some(&self.debug)
+    }
+}
+
+/// Embedded AlphaZero-conv policy/value net (`.cnn`, 7 conv outputs).
+pub const EMBEDDED_AZ_CONV: &str = include_str!("../../assets/alphazero-cnn/best.cnn");
 
 /// One self-play training sample for gradient training (Python side).
 #[derive(Debug, Clone)]
@@ -436,6 +520,29 @@ mod tests {
             assert_eq!(s.policy[REVERSE], 0.0, "reverse never gets visits");
             let sum: f32 = s.policy.iter().sum();
             assert!((sum - 1.0).abs() < 1e-4 || sum == 0.0);
+        }
+    }
+
+    #[test]
+    fn conv_variant_has_value_head_and_plays_legally() {
+        let az = AlphaZeroConv::embedded();
+        assert_eq!(az.net.output_dim(), AZ_OUTPUTS);
+        let mut az = az;
+        let mut state = GameState::new(Config::default());
+        for _ in 0..150 {
+            if state.status() != Status::Running {
+                break;
+            }
+            let had_safe = !safe_moves(&state).is_empty();
+            let dir = az.next_move(&state);
+            state.tick(Some(dir));
+            if had_safe {
+                assert_eq!(
+                    state.status(),
+                    Status::Running,
+                    "AlphaZero-conv must not step into death while a safe move exists"
+                );
+            }
         }
     }
 

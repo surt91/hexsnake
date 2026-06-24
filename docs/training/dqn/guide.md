@@ -81,6 +81,10 @@ im selben Commit wie etwaige Format-/Trainer-Änderungen pflegen.
 ## 6. CNN-Variante (Vergleich)
 
 Mit `HexSnakeGym(observation="grid")` liefert das Env einen 3×H×W-Brett-Tensor
-(Körper/Kopf/Futter) für eine `CnnPolicy`. Das dient dem Vergleich
-Sensorstrahlen vs. CNN **in Python**; CNN-Policies werden nicht ins WASM
-eingebettet (pure-Rust-Conv-Inferenz ist außerhalb des Scopes).
+(Körper/Kopf/Futter) für eine SB3-`CnnPolicy` (`SmallGridCNN`). Das dient dem
+Vergleich Sensorstrahlen vs. CNN **in Python** mit Quadrat-Kernen.
+
+> **Hinweis (umgekehrte Entscheidung):** Für eine *einbettbare* CNN-Strategie
+> gibt es inzwischen eine eigene **Hex-Faltung** mit pure-Rust/WASM-Inferenz —
+> siehe `docs/training/cnn/guide.md` und `plan/02_cnn.md`. Diese SB3-Variante
+> hier bleibt der Python-only-Vergleich.

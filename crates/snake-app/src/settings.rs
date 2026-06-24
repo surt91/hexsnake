@@ -74,10 +74,12 @@ pub enum StrategyChoice {
     Dqn,
     Ppo,
     AlphaZero,
+    ConvNet,
+    AlphaZeroConv,
 }
 
 impl StrategyChoice {
-    pub const ALL: [StrategyChoice; 12] = [
+    pub const ALL: [StrategyChoice; 14] = [
         StrategyChoice::Human,
         StrategyChoice::Chaos,
         StrategyChoice::Greedy,
@@ -90,6 +92,8 @@ impl StrategyChoice {
         StrategyChoice::Dqn,
         StrategyChoice::Ppo,
         StrategyChoice::AlphaZero,
+        StrategyChoice::ConvNet,
+        StrategyChoice::AlphaZeroConv,
     ];
 
     pub fn label(self) -> &'static str {
@@ -106,6 +110,8 @@ impl StrategyChoice {
             StrategyChoice::Dqn => "DQN",
             StrategyChoice::Ppo => "PPO",
             StrategyChoice::AlphaZero => "AlphaZero-light",
+            StrategyChoice::ConvNet => "Conv-Netz",
+            StrategyChoice::AlphaZeroConv => "AlphaZero-Conv",
         }
     }
 

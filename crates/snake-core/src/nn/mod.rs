@@ -1,17 +1,19 @@
 //! Minimal neural-net stack: sensor features, a pure-Rust MLP forward
 //! pass and a text weight format shared with the later Python export.
 
+mod conv;
 mod features;
 mod mlp;
 mod neat;
 
+pub use conv::{HexConv, CONV_CHANNELS};
 pub use features::{az_features, features, AZ_FEATURE_COUNT, FEATURE_COUNT};
 pub use mlp::Mlp;
 pub use neat::{ConnGene, Genome, Net, NodeGene, NodeKind};
 
 use crate::coords::Direction;
 use crate::game::GameState;
-use crate::strategy::{safe_moves, Strategy, StrategyDebug};
+use crate::strategy::{doomed_move, safe_moves, Strategy, StrategyDebug};
 
 /// Hidden-layer sizes of the default architecture. Input/output dims are
 /// fixed by the feature vector and the six directions.
@@ -103,6 +105,65 @@ fn pick_relative_move(state: &GameState, scores: &[f32], debug: &mut StrategyDeb
         .unwrap_or_else(|| crate::strategy::doomed_move(state))
 }
 
+/// Pick a move from six *absolute* direction scores (index `i` =
+/// `Direction::ALL[i]`). Used by the conv net, which — unlike the
+/// heading-relative sensor nets — is inherently oriented to the board. Fatal
+/// moves are masked; ties fall back to a doomed move.
+fn pick_absolute_move(state: &GameState, scores: &[f32], debug: &mut StrategyDebug) -> Direction {
+    let safe: Vec<Direction> = safe_moves(state).into_iter().map(|(d, _)| d).collect();
+    debug.move_scores.clear();
+
+    let mut best: Option<(Direction, f32)> = None;
+    for (i, &score) in scores.iter().enumerate() {
+        let dir = Direction::ALL[i];
+        debug.move_scores.push((dir, f64::from(score)));
+        if !safe.contains(&dir) {
+            continue;
+        }
+        if best.is_none_or(|(_, b)| score > b) {
+            best = Some((dir, score));
+        }
+    }
+    best.map(|(d, _)| d).unwrap_or_else(|| doomed_move(state))
+}
+
+/// Conv-net strategy: the whole board as a grid tensor in, six absolute
+/// direction scores out, fatal moves masked. Counterpart to [`NeuralNet`] that
+/// sees positions instead of sensor rays.
+pub struct ConvNet {
+    net: HexConv,
+    debug: StrategyDebug,
+}
+
+impl ConvNet {
+    pub fn new(net: HexConv) -> Self {
+        Self {
+            net,
+            debug: StrategyDebug::default(),
+        }
+    }
+
+    /// The checked-in embedded conv network (smoke-run artifact until the user
+    /// runs the real training — see `docs/training/cnn/guide.md`).
+    pub fn embedded() -> Self {
+        Self::new(HexConv::from_text(EMBEDDED_CONV).expect("embedded conv weights must parse"))
+    }
+}
+
+impl Strategy for ConvNet {
+    fn next_move(&mut self, state: &GameState) -> Direction {
+        let scores = self.net.forward(state);
+        pick_absolute_move(state, &scores, &mut self.debug)
+    }
+
+    fn debug(&self) -> Option<&StrategyDebug> {
+        Some(&self.debug)
+    }
+}
+
+/// Embedded conv-net policy weights (`.cnn`, six absolute outputs).
+pub const EMBEDDED_CONV: &str = include_str!("../../assets/cnn/best.cnn");
+
 /// NEAT-driven strategy: same sensor features and move masking as
 /// [`NeuralNet`], but the network has an evolved topology.
 pub struct NeatNet {
@@ -175,6 +236,29 @@ mod tests {
                     state.status(),
                     Status::Running,
                     "nn must not pick a fatal move while a safe one exists"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn embedded_conv_plays_legally_and_deterministically() {
+        let mut a = ConvNet::embedded();
+        let mut b = ConvNet::embedded();
+        let mut state = GameState::new(Config::default());
+        for _ in 0..200 {
+            if state.status() != Status::Running {
+                break;
+            }
+            let da = a.next_move(&state);
+            assert_eq!(da, b.next_move(&state), "deterministic");
+            let had_safe = !safe_moves(&state).is_empty();
+            state.tick(Some(da));
+            if had_safe {
+                assert_eq!(
+                    state.status(),
+                    Status::Running,
+                    "conv net must not pick a fatal move while a safe one exists"
                 );
             }
         }
