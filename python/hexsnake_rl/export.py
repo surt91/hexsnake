@@ -61,14 +61,15 @@ def _linear_layers(module) -> list[Layer]:
 CNN_MAGIC = "hexsnake-cnn v1"
 
 
-def export_cnn(path: str, model) -> None:
-    """Write a `HexConvNet` to `path` in the `.cnn` text format.
+def cnn_text(model) -> str:
+    """Serialize a `HexConvNet` to the `.cnn` text format (in memory).
 
     Layout matches `crates/snake-core/src/nn/conv.rs`: per conv layer the
     `out×in×7` kernel (row-major `[o][i][tap]`) then the `out` biases, in layer
     order; then the dense head's `Mlp` params (each `nn.Linear` as row-major
     `(out, in)` weights then bias). `verify_cnn_roundtrip.py` checks this layout
-    against the real Rust forward pass.
+    against the real Rust forward pass. Used both to persist weights and to feed
+    the current net into Rust self-play (`az_conv_selfplay`).
     """
     params: list[float] = []
     for w, b in zip(model.convs, model.conv_bias):
@@ -88,12 +89,16 @@ def export_cnn(path: str, model) -> None:
     lines.append("params")
     for i in range(0, len(params), 16):
         lines.append(" ".join(repr(float(p)) for p in params[i : i + 16]))
+    return "\n".join(lines) + "\n"
 
+
+def export_cnn(path: str, model) -> None:
+    """Write a `HexConvNet` to `path` in the `.cnn` text format."""
     import os
 
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(cnn_text(model))
 
 
 def from_ppo(model) -> list[Layer]:

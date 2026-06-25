@@ -10,8 +10,8 @@ mod planner;
 mod space;
 
 pub use alphazero::{
-    self_play, self_play_with_rewards, AlphaZeroConv, AlphaZeroLite, AzSample, SelfPlayResult,
-    AZ_OUTPUTS,
+    self_play, self_play_conv_with_rewards, self_play_with_rewards, AlphaZeroConv, AlphaZeroLite,
+    AzSample, ConvAzSample, ConvSelfPlayResult, SelfPlayResult, AZ_OUTPUTS,
 };
 pub use chaos::ChaosWalker;
 pub use greedy::Greedy;

@@ -90,14 +90,55 @@ uv run --extra train python train_cnn.py --games 150 --epochs 40 \
 > [`run-001-report`](run-001-report/report.md); ein *starker* Lauf braucht
 > RL/Self-Play, nicht BC.
 
-## 4. AlphaZero-Conv trainieren
+## 4. AlphaZero-Conv trainieren (Self-Play)
 
-Self-Play wie bei AlphaZero-light, aber mit dem Conv-Netz als Evaluator
-(Policy 6 + Value). Empfohlen analog `train_alphazero.py`: Self-Play in Rust,
-Gradientenschritt in Python (Policy-CE gegen MCTS-Besuche, Value-MSE gegen den
-tanh-Return), Export über `export_cnn`. Such-Budget (`--sims`) und
+`train_alphazero_conv.py` ist das Conv-Pendant zu `train_alphazero.py`:
+Self-Play läuft komplett in Rust (`az_conv_selfplay`, GIL frei → alle Cores) mit
+**genau derselben** MCTS wie die Inferenz (`AlphaZeroConv`), nur dass das
+Conv-Netz Policy/Value liefert. Python macht den Gradientenschritt — Policy-CE
+gegen die MCTS-Besuchsverteilung (im **absoluten** Richtungs-Frame, mit
+per-Sample maskiertem Reverse-Zug), Value-MSE gegen den tanh-Return — und
+exportiert `.cnn` über `export_cnn`.
+
+Der **dichte Schritt-Reward** (Futter-Annäherung + Fress-Bonus) steckt schon in
+der geteilten Suche, daher steuert die Policy auch mit untrainiertem Value-Kopf
+Futter an (statt zu kreisen). Such-Budget (`--sims`) und
 `AlphaZeroConv::embedded()`-Sims (aktuell **24**) müssen zusammenpassen, da der
 Value-Kopf auf die Tiefe kalibriert ist.
+
+Smoke-Run (Agent, immer zuerst):
+
+```bash
+cd python
+uv run --extra train python train_alphazero_conv.py \
+  --iterations 3 --games-per-iter 8 --sims 8 --max-ticks 300 \
+  --eval-every 2 --eval-games 3 --eval-max-ticks 500 --out /tmp/az-conv-smoke.cnn
+```
+
+Beim Start läuft ein **Export-Self-Check** (Torch-Netz == Rust-`cnn_forward`),
+der das 7-Output-`.cnn`-Layout absichert.
+
+Echter Lauf (vom Nutzer, stärkere Hardware):
+
+```bash
+uv run --extra train python train_alphazero_conv.py \
+  --games-per-iter 128 --sims 24 --boundary mixed --max-ticks 1500 \
+  --epochs 4 --lr 1e-3 --seed 1 \
+  --eval-every 5 --eval-games 12 --eval-max-ticks 3000 \
+  --max-hours 4.5 --iterations 100000 \
+  --out training-out/az-conv/az-conv.cnn
+```
+
+- `--max-hours N` begrenzt per Wall-Clock; `best.cnn` wird laufend beim besten
+  greedy-Eval (Walls+Periodic-Mittel, Board-Seeds `0..N`, deployment-nah)
+  gesichert — wie bei AlphaZero-light, gegen den Kreis-Kollaps.
+- Architektur über `--conv-channels` (Default `16 16`) und `--head-hidden`
+  (Default `24`); Head-Eingang ist immer `2×`letzter Conv-Kanal (Readout⊕Pool),
+  Ausgang 7. Default-Netz ≈ 3 200 Params (wie das BC-Conv-Netz, plus Value).
+- Self-Play parallelisiert über `--workers` (Default = alle Cores).
+- Conv-Self-Play ist pro Sim teurer als das MLP (ganzes Brett statt Strahlen) —
+  die 32 Cores tragen den Durchsatz; die GPU bleibt fast ungenutzt (winziger
+  Gradientenschritt).
 
 ## 5. Auswerten & Einbetten
 

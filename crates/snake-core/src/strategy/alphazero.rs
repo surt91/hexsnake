@@ -282,12 +282,22 @@ pub struct AlphaZeroConv {
 
 impl AlphaZeroConv {
     pub fn new(net: HexConv, sims: u32) -> Self {
+        Self::with_eat_bonus(net, sims, 0.3)
+    }
+
+    pub fn with_eat_bonus(net: HexConv, sims: u32, eat_bonus: f32) -> Self {
         Self {
             net,
             sims,
-            eat_bonus: 0.3,
+            eat_bonus,
             debug: StrategyDebug::default(),
         }
+    }
+
+    /// Run the tree search from `root`; returns per-action visit counts in the
+    /// heading-relative frame (same as [`AlphaZeroLite::search`]).
+    pub fn search(&self, root: &GameState) -> [u32; 6] {
+        run_search(root, self.sims, self.eat_bonus, &|s| self.evaluate(s))
     }
 
     /// The checked-in embedded conv policy/value net (see
@@ -456,6 +466,151 @@ pub fn self_play_with_rewards(
     }
 }
 
+/// One self-play training sample for the **conv** net. Unlike [`AzSample`] it
+/// carries the whole-board grid (the conv net's input) and an **absolute**
+/// policy target — the conv head emits absolute direction scores, so the MCTS
+/// visit counts are rotated out of the heading-relative frame.
+#[derive(Debug, Clone)]
+pub struct ConvAzSample {
+    /// 3-channel board grid (body excl. head / head / food), channel-major then
+    /// row-major — the same layout as the env's `grid` observation and
+    /// `expert_rollout`. Python adds the constant topology plane.
+    pub grid: Vec<f32>,
+    /// MCTS policy target as normalized visit counts over the six **absolute**
+    /// directions (indexed by `Direction::ALL`); the reverse move stays 0.
+    pub policy: [f32; 6],
+    /// Value target: tanh of the discounted return from this state.
+    pub value: f32,
+    /// Index into `Direction::ALL` of the snake's heading at this state. Lets
+    /// the trainer mask the (auto-overridden) reverse action per sample, the
+    /// absolute-frame equivalent of the MLP trainer's fixed reverse mask.
+    pub heading: usize,
+}
+
+/// Outcome of one conv self-play game (samples + game-level stats), mirroring
+/// [`SelfPlayResult`] for the [`ConvAzSample`] payload.
+#[derive(Debug, Clone)]
+pub struct ConvSelfPlayResult {
+    pub samples: Vec<ConvAzSample>,
+    pub score: u32,
+    pub ticks: u64,
+}
+
+/// Body/head/food grid for the conv net: 3 channels × `h` × `w`, channel-major
+/// then row-major, matching `expert_rollout` and the env's grid observation.
+fn board_grid(state: &GameState, w: usize, h: usize) -> Vec<f32> {
+    let plane = w * h;
+    let mut grid = vec![0.0f32; 3 * plane];
+    let head = state.head();
+    for cell in state.snake() {
+        let idx = (cell.row as usize) * w + cell.col as usize;
+        let channel = if cell == head { 1 } else { 0 };
+        grid[channel * plane + idx] = 1.0;
+    }
+    let food = state.food();
+    grid[2 * plane + (food.row as usize) * w + food.col as usize] = 1.0;
+    grid
+}
+
+/// Conv-net self-play, the [`HexConv`] analogue of [`self_play_with_rewards`]:
+/// the exact same MCTS and dense-reward shaping drive the game, but the net is
+/// the convolutional policy/value head and each sample carries the board grid
+/// plus the **absolute** policy target. Kept parallel to the MLP version rather
+/// than generic so the (stable) reward logic of each stays independently
+/// obvious.
+#[allow(clippy::too_many_arguments)]
+pub fn self_play_conv_with_rewards(
+    net: &HexConv,
+    config: crate::game::Config,
+    sims: u32,
+    temperature: f32,
+    seed: u64,
+    max_ticks: u64,
+    eat_bonus: f32,
+    sp_eat: f32,
+) -> ConvSelfPlayResult {
+    use rand::SeedableRng as _;
+
+    let (w, h) = (config.width as usize, config.height as usize);
+    let az = AlphaZeroConv::with_eat_bonus(net.clone(), sims, eat_bonus);
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let mut state = GameState::new(config);
+
+    let mut steps: Vec<(Vec<f32>, [f32; 6], usize)> = Vec::new();
+    let mut rewards: Vec<f32> = Vec::new();
+
+    while state.status() == Status::Running && state.ticks() < max_ticks {
+        let visits = az.search(&state);
+        let total: u32 = visits.iter().sum();
+        // Rotate the relative visit counts into the absolute frame the conv
+        // head predicts: relative action `a` is `heading` rotated clockwise `a`.
+        let heading = state.direction();
+        let heading_idx = Direction::ALL
+            .iter()
+            .position(|d| *d == heading)
+            .expect("direction is in ALL");
+        let mut policy = [0.0f32; 6];
+        if total > 0 {
+            for (a, &v) in visits.iter().enumerate() {
+                let dir = heading.rotated_cw(a as u8);
+                let idx = Direction::ALL
+                    .iter()
+                    .position(|d| *d == dir)
+                    .expect("direction is in ALL");
+                policy[idx] = v as f32 / total as f32;
+            }
+        }
+        steps.push((board_grid(&state, w, h), policy, heading_idx));
+
+        let action = sample_action(&visits, temperature, &mut rng);
+        let score_before = state.score();
+        let dist_before = state.board().distance(state.head(), state.food());
+        let dir = state.direction().rotated_cw(action as u8);
+        state.tick(Some(dir));
+
+        // Same dense reward as the MLP self-play: approach shaping + eat bonus
+        // + terminal, so the value target carries a navigation signal.
+        let mut reward = -0.005;
+        if state.score() > score_before {
+            reward += sp_eat;
+        } else {
+            let dist = state.board().distance(state.head(), state.food());
+            reward += 0.1 * (dist_before as f32 - dist as f32);
+        }
+        match state.status() {
+            Status::GameOver => reward -= 1.0,
+            Status::Won => reward += 2.0,
+            Status::Running => {}
+        }
+        rewards.push(reward);
+    }
+
+    // Discounted returns → tanh value targets (computed back-to-front).
+    let mut g = 0.0f32;
+    let mut values = vec![0.0f32; rewards.len()];
+    for t in (0..rewards.len()).rev() {
+        g = rewards[t] + SELFPLAY_GAMMA * g;
+        values[t] = g.tanh();
+    }
+
+    let samples = steps
+        .into_iter()
+        .zip(values)
+        .map(|((grid, policy, heading), value)| ConvAzSample {
+            grid,
+            policy,
+            value,
+            heading,
+        })
+        .collect();
+
+    ConvSelfPlayResult {
+        samples,
+        score: state.score(),
+        ticks: state.ticks(),
+    }
+}
+
 /// Sample an action from visit counts weighted by `count^(1/temperature)`.
 /// `temperature <= 0` selects the most-visited action (greedy).
 fn sample_action(visits: &[u32; 6], temperature: f32, rng: &mut rand_pcg::Pcg64) -> usize {
@@ -520,6 +675,41 @@ mod tests {
             assert_eq!(s.policy[REVERSE], 0.0, "reverse never gets visits");
             let sum: f32 = s.policy.iter().sum();
             assert!((sum - 1.0).abs() < 1e-4 || sum == 0.0);
+        }
+    }
+
+    #[test]
+    fn conv_self_play_yields_well_formed_samples() {
+        let net = AlphaZeroConv::embedded().net;
+        let config = Config {
+            width: 16,
+            height: 12,
+            seed: 7,
+            ..Config::default()
+        };
+        let plane = (config.width * config.height) as usize;
+        let a = self_play_conv_with_rewards(&net, config, 12, 1.0, 99, 500, 0.3, 1.0);
+        let b = self_play_conv_with_rewards(&net, config, 12, 1.0, 99, 500, 0.3, 1.0);
+        assert!(!a.samples.is_empty());
+        assert_eq!(
+            a.samples.len(),
+            b.samples.len(),
+            "same seed ⇒ identical self-play"
+        );
+        for s in &a.samples {
+            assert_eq!(s.grid.len(), 3 * plane);
+            assert!((-1.0..=1.0).contains(&s.value));
+            assert!(s.heading < 6);
+            // The reverse of the heading never gets visits.
+            let reverse_abs = (s.heading + 3) % 6;
+            assert_eq!(s.policy[reverse_abs], 0.0, "reverse never gets visits");
+            let sum: f32 = s.policy.iter().sum();
+            assert!((sum - 1.0).abs() < 1e-4 || sum == 0.0);
+            // Exactly one head and one food cell.
+            let head_sum: f32 = s.grid[plane..2 * plane].iter().sum();
+            let food_sum: f32 = s.grid[2 * plane..].iter().sum();
+            assert_eq!(head_sum, 1.0);
+            assert_eq!(food_sum, 1.0);
         }
     }
 

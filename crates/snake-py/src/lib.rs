@@ -19,6 +19,10 @@ mod bindings {
     /// One self-play row returned to Python: (features, policy_target, value).
     type AzSampleRow = (Vec<f32>, Vec<f32>, f32);
 
+    /// One conv self-play row: (grid 3×H×W, absolute policy target, value,
+    /// heading index into `Direction::ALL`).
+    type ConvAzSampleRow = (Vec<f32>, Vec<f32>, f32, usize);
+
     /// Gym-like environment. Actions are the six heading-relative directions.
     #[pyclass(name = "HexSnakeEnv")]
     struct PyEnv {
@@ -297,6 +301,62 @@ mod bindings {
         Ok((rows, result.score, result.ticks))
     }
 
+    /// Play one **conv** AlphaZero self-play game in Rust and return
+    /// `(rows, score, ticks)`. The net is passed as `.cnn` weight text (parsed
+    /// into a `HexConv`); the search is the same MCTS `AlphaZeroConv` uses at
+    /// inference, so the policy targets need no second implementation. Each row
+    /// is `(grid, policy_target, value, heading)`: the 3-channel board grid (the
+    /// conv input, channel-major then row-major — Python adds the topology
+    /// plane), the **absolute** MCTS visit distribution, the tanh return, and
+    /// the heading's index into `Direction::ALL` (so Python can mask the reverse
+    /// action per sample). The GIL is released during the pure-Rust game.
+    #[pyfunction]
+    #[pyo3(signature = (cnn_text, boundary="walls", width=16, height=12, sims=24, temperature=1.0, seed=0, max_ticks=2000, eat_bonus=0.3, sp_eat=1.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn az_conv_selfplay(
+        py: Python<'_>,
+        cnn_text: &str,
+        boundary: &str,
+        width: i32,
+        height: i32,
+        sims: u32,
+        temperature: f32,
+        seed: u64,
+        max_ticks: u64,
+        eat_bonus: f32,
+        sp_eat: f32,
+    ) -> PyResult<(Vec<ConvAzSampleRow>, u32, u64)> {
+        use snake_core::nn::HexConv;
+        use snake_core::strategy::self_play_conv_with_rewards;
+
+        let boundary = parse_boundary(boundary)?;
+        let net = HexConv::from_text(cnn_text).map_err(PyValueError::new_err)?;
+        let config = snake_core::Config {
+            width,
+            height,
+            boundary,
+            seed,
+        };
+        let result = py.allow_threads(|| {
+            self_play_conv_with_rewards(
+                &net,
+                config,
+                sims,
+                temperature,
+                seed,
+                max_ticks,
+                eat_bonus,
+                sp_eat,
+            )
+        });
+        let rows = result
+            .samples
+            .into_iter()
+            .map(|s| (s.grid, s.policy.to_vec(), s.value, s.heading))
+            .collect();
+        Ok((rows, result.score, result.ticks))
+    }
+
     #[pymodule]
     fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyEnv>()?;
@@ -305,6 +365,7 @@ mod bindings {
         m.add_function(wrap_pyfunction!(neighbor_table, m)?)?;
         m.add_function(wrap_pyfunction!(expert_rollout, m)?)?;
         m.add_function(wrap_pyfunction!(az_selfplay, m)?)?;
+        m.add_function(wrap_pyfunction!(az_conv_selfplay, m)?)?;
         m.add("NUM_ACTIONS", ACTIONS)?;
         Ok(())
     }

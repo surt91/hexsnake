@@ -17,6 +17,8 @@ cnn_forward = _native.cnn_forward
 neighbor_table = _native.neighbor_table
 #: Play one AlphaZero-light self-play game in Rust (GIL released).
 az_selfplay = _native.az_selfplay
+#: Play one AlphaZero-conv self-play game in Rust (GIL released).
+az_conv_selfplay = _native.az_conv_selfplay
 
 __all__ = [
     "HexSnakeGym",
@@ -28,4 +30,5 @@ __all__ = [
     "cnn_forward",
     "neighbor_table",
     "az_selfplay",
+    "az_conv_selfplay",
 ]
