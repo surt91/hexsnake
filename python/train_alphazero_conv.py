@@ -171,6 +171,10 @@ def main():
     ap.add_argument("--max-hours", type=float, default=0.0,
                     help="wall-clock budget in hours (0 = run all --iterations); "
                          "stops after the current iteration once exceeded")
+    ap.add_argument("--no-balance-topology", dest="balance_topology",
+                    action="store_false",
+                    help="disable per-epoch oversampling that equalizes the "
+                         "Walls/Torus gradient contribution (on by default)")
     ap.add_argument("--conv-channels", type=int, nargs="+", default=[16, 16],
                     metavar="N", help="conv layer output channels (default: 16 16)")
     ap.add_argument("--head-hidden", type=int, nargs="+", default=[24],
@@ -233,15 +237,27 @@ def main():
         heading_t = th.from_numpy(heading_np)
         tid_t = th.from_numpy(tid)
 
+        # Balance the gradient across topologies. Torus games last far longer
+        # than Walls games (which die fast), so the buffer is dominated by torus
+        # states; without balancing the net overfits torus and never learns
+        # Walls (run-001: Periodic 77 / Walls ~5). Oversample the minority
+        # topology each epoch so both contribute equally many batches.
+        subs = [th.nonzero(tid_t == t, as_tuple=False).squeeze(1) for t in (0, 1)]
+        target = max(s.numel() for s in subs)
+
         model.train()
         last = (0.0, 0.0)
         for _ in range(args.epochs):
             # Topology-homogeneous batches so each uses the right gather table.
             for t in (0, 1):
-                sub = th.nonzero(tid_t == t, as_tuple=False).squeeze(1)
+                sub = subs[t]
                 if sub.numel() == 0:
                     continue
-                perm = sub[th.randperm(sub.numel())]
+                if args.balance_topology and sub.numel() < target:
+                    extra = sub[th.randint(sub.numel(), (target - sub.numel(),))]
+                    perm = th.cat([sub, extra])[th.randperm(target)]
+                else:
+                    perm = sub[th.randperm(sub.numel())]
                 for s in range(0, perm.numel(), args.batch):
                     idx = perm[s : s + args.batch]
                     last = train_step(
