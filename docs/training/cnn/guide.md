@@ -157,5 +157,7 @@ cargo test -p snake-core   # embedded_*-Tests prüfen Laden + legales Spiel
 >   Walls 11.72 / Periodic 8.55, deployed — siehe
 >   [`run-001-report`](run-001-report/report.md)). Funktionsfähig, aber
 >   spielerisch schwach (überlebt lange, frisst wenig).
-> - `…/alphazero-cnn/best.cnn` = deterministisches Smoke-Artefakt
->   (`python/gen_cnn_smoke.py`), bis ein echter Self-Play-Lauf es ersetzt.
+> - `…/alphazero-cnn/best.cnn` = **Run AZ-001** (Self-Play, Walls 4.13 /
+>   Periodic **77.47**, deployed — siehe
+>   [`run-az-001-report`](run-az-001-report/report.md)). Periodic gleichauf mit
+>   dem MLP-AlphaZero; Walls bleibt „sicheres Kreisen" (offen).

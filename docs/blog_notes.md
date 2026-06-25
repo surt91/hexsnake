@@ -577,3 +577,46 @@ dass man es Monate später noch versteht.
   Nachbar-Geometrie über das Rust-Binding `neighbor_table` — Walls/Torus matchen
   so die Engine bitgenau, statt die Offset-/Axial-Konvertierung in Python zu
   duplizieren (eine notorische Fehlerquelle).
+
+### Run AZ-001 — AlphaZero-Conv per Self-Play (RL schlägt BC, aber nur auf Torus)
+
+- **RL löst, was BC nicht konnte — auf Periodic.** Dasselbe Conv-Netz, das per
+  Behavior Cloning auf 7.2 Punkte (Periodic) kreiste, erreicht per Self-Play
+  **77.5** — *gleichauf mit dem MLP-AlphaZero* (77.0). Der Unterschied ist allein
+  das dichte Futter-Annäherungs-Reward in der MCTS-Suche: Es zieht die Policy
+  aufs Futter, statt sie sicher kreisen zu lassen. Bestätigt die Empfehlung aus
+  dem BC-Run wörtlich: für ein *starkes* Brett-Vision-Netz ist der Hebel RL,
+  nicht Imitation.
+- **Der Kreis-Kollaps stirbt nicht, er zieht sich auf Walls zurück.** Auf Walls
+  bleibt das Netz bei 4 Punkten — aber es *stirbt nicht*, es erreicht die volle
+  3000-Tick-Grenze (⌀ Ticks 3000.0). Es kreist also weiter sicher. Die
+  Pathologie ist **topologie-selektiv**: Auf dem Torus führt Futter-Verfolgung
+  nie an eine Wand, auf Walls schon — dort überwiegt der gelernte Todes-Malus
+  das Annäherungs-Reward, die Policy bleibt defensiv. Ein Reward, das den Kollaps
+  auf *einer* Topologie bricht, kann ihn auf der anderen ungebrochen lassen.
+- **„Mehr Daten gegen die Schieflage" widerlegt.** Naheliegende Walls-Hypothese:
+  Torus-Partien laufen 700–1400 Ticks, Walls-Partien sterben schnell → der
+  Buffer ist Torus-lastig → Übergewicht. Per-Epoche-Oversampling der
+  Walls-Samples (Run AZ-002, dazu größeres Netz) hob Walls trotzdem nicht (Avg
+  31.5 statt 40.9 — netto schlechter). Lehre: Die wenigen, todeslastigen
+  Walls-Trajektorien zu *wiederholen* erzeugt kein Signal, das nicht da ist — es
+  ist ein **Bootstrap-Henne-Ei** (kann Walls nicht spielen → erzeugt keine guten
+  Walls-Daten → lernt Walls nicht), keine reine Datenbalance.
+- **Absolut→relativ rückrotieren, sonst zerfällt das Label.** Das Conv-Netz gibt
+  *absolute* Policy-Logits aus, die geteilte MCTS denkt *relativ*. Self-Play
+  sammelt die relativen Besuchs-Counts und rotiert sie in den absoluten Frame
+  zurück (Label fürs Netz); der Reverse-Zug ist je Sample ein anderer absoluter
+  Index, also wird er **per-Sample** maskiert statt über eine feste
+  Spaltenauswahl wie beim MLP. Eine Repräsentations-Naht, die genau an einer
+  Stelle (dem Trainings-Label) sauber zusammengenäht werden muss.
+- **GPU langweilt sich.** „AlphaZero-Conv-Training" klingt nach GPU — tatsächlich
+  ist Self-Play pure-Rust-CPU-MCTS (32 Cores tragen den Durchsatz), der
+  Gradientenschritt auf 3 200 Params ist trivial. Die RTX bleibt fast idle; der
+  Engpass ist die Suche, nicht der Backprop.
+- **Conv ist ~30× teurer pro Iter als der MLP.** Ganzes Brett statt Strahlen,
+  Faltung in jedem MCTS-Blatt: ~50 s/Iter (Conv) vs. ~1,5 s/Iter (MLP). Der
+  MLP-AlphaZero brauchte ~1600 Iter für starke Walls; in 4,5 h schafft Conv
+  ~50. Gut möglich, dass Walls (auch) ein Iterations-Budget-Problem ist, nicht
+  nur ein Architektur-Problem — der naheliegendste nächste Hebel ist trotzdem
+  ein größerer Rezeptivbereich (mehr Conv-Layer), damit der Kopf Wände früh
+  genug „sieht".
