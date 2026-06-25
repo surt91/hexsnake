@@ -141,6 +141,82 @@ mod bindings {
         Ok(out)
     }
 
+    /// Play `games` games with the A* `PathPlanner` (the strongest classical
+    /// AI) and return behavior-cloning rows: per running step a 3-channel grid
+    /// (body/head/food, channel-major then row-major — the same layout as the
+    /// env's `grid` observation), the planner's chosen **absolute** move as an
+    /// index into `Direction::ALL`, and a `toward` flag (1.0 if the move
+    /// strictly reduced the (torus-aware) distance to the food, else 0.0). The
+    /// flag lets the trainer upweight food-seeking moves so the clone does not
+    /// collapse into safe circling. Python adds the constant topology plane and
+    /// reads the head index off the grid. The GIL is released for the games.
+    #[pyfunction]
+    #[pyo3(signature = (boundary="walls", width=16, height=12, max_ticks=2000, games=200, seed=0))]
+    fn expert_rollout(
+        py: Python<'_>,
+        boundary: &str,
+        width: i32,
+        height: i32,
+        max_ticks: u64,
+        games: u64,
+        seed: u64,
+    ) -> PyResult<(Vec<Vec<f32>>, Vec<usize>, Vec<f32>)> {
+        use snake_core::strategy::{PathPlanner, Strategy};
+        use snake_core::{Config, Direction, GameState, Status};
+
+        let boundary = parse_boundary(boundary)?;
+        let (w, h) = (width as usize, height as usize);
+        let plane = w * h;
+
+        let result = py.allow_threads(|| {
+            let mut grids: Vec<Vec<f32>> = Vec::new();
+            let mut labels: Vec<usize> = Vec::new();
+            let mut toward: Vec<f32> = Vec::new();
+            for g in 0..games {
+                let mut state = GameState::new(Config {
+                    width,
+                    height,
+                    boundary,
+                    seed: seed.wrapping_add(g),
+                });
+                let mut planner = PathPlanner::new();
+                while state.status() == Status::Running && state.ticks() < max_ticks {
+                    let dir = planner.next_move(&state);
+                    let label = Direction::ALL
+                        .iter()
+                        .position(|d| *d == dir)
+                        .expect("direction is in ALL");
+
+                    let head = state.head();
+                    let food = state.food();
+                    // Did this move advance toward the food (torus-aware)?
+                    let dist_before = state.board().distance(head, food);
+                    let toward_food = state
+                        .board()
+                        .neighbor(head, dir)
+                        .map(|n| state.board().distance(n, food) < dist_before)
+                        .unwrap_or(false);
+
+                    // 3-channel grid: body (excl. head), head, food.
+                    let mut grid = vec![0.0f32; 3 * plane];
+                    for cell in state.snake() {
+                        let idx = (cell.row as usize) * w + cell.col as usize;
+                        let ch = if cell == head { 1 } else { 0 };
+                        grid[ch * plane + idx] = 1.0;
+                    }
+                    grid[2 * plane + (food.row as usize) * w + food.col as usize] = 1.0;
+
+                    grids.push(grid);
+                    labels.push(label);
+                    toward.push(if toward_food { 1.0 } else { 0.0 });
+                    state.tick(Some(dir));
+                }
+            }
+            (grids, labels, toward)
+        });
+        Ok(result)
+    }
+
     fn parse_boundary(s: &str) -> PyResult<BoundaryMode> {
         match s {
             "walls" => Ok(BoundaryMode::Walls),
@@ -227,6 +303,7 @@ mod bindings {
         m.add_function(wrap_pyfunction!(mlp_forward, m)?)?;
         m.add_function(wrap_pyfunction!(cnn_forward, m)?)?;
         m.add_function(wrap_pyfunction!(neighbor_table, m)?)?;
+        m.add_function(wrap_pyfunction!(expert_rollout, m)?)?;
         m.add_function(wrap_pyfunction!(az_selfplay, m)?)?;
         m.add("NUM_ACTIONS", ACTIONS)?;
         Ok(())

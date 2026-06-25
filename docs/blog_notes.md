@@ -550,4 +550,30 @@ dass man es Monate später noch versteht.
   zur Tiny-/Pur-Rust-Philosophie besser als tract/candle/ort, die nach
   `wasm32-unknown-unknown` ohnehin sperrig sind. Schwergewichtige
   Inferenz-Crates hätten hier ihren Platz nicht verdient.
-  Experiment-Feature pro Strategie zu isolieren hielt die Iteration billig.
+
+### Run 001 — Behavior Cloning (echtes Training)
+
+- **64 % Imitation, trotzdem schwaches Spiel**: Das Conv-Netz auf den
+  A*-Pfadplaner zu klonen (260k Zustände, beide Topologien) erreichte ~64 %
+  Top-1-Genauigkeit gegen den Experten — aber im Spiel nur ~10 Punkte (Walls
+  11.7 / Periodic 8.6), während es **extrem lange überlebt** (5661 / 8700 Ticks,
+  mehr als alles außer Hamilton). Klassischer „sicheres Kreisen"-Kollaps: liest
+  Körper/Wand sauber, committet aber nicht aufs Futter. Label-Accuracy ≠
+  Spielstärke.
+- **Überraschend: die Daten waren zu 70 % futterwärts**: Der Kollaps kommt also
+  *nicht* aus überwiegend defensiven Labels. Beim Inferenz-Argmax über die
+  sicheren Züge gewinnt zu oft die konservative Heading-Fortsetzung. Ein
+  `--toward-weight 4` (futter-annähernde Züge im Loss 4× gewichtet, Flag direkt
+  aus dem Rust-`expert_rollout`) half nur moderat (Walls 8.2→11.7; Periodic
+  praktisch gleich).
+- **Bestätigt die Hausregel**: Reine Imitation/sichere Ziele kollabieren hier
+  zum Kreisen — derselbe Effekt, gegen den AlphaZero ein dichtes
+  Futter-Annäherungs-Reward + Value/MCTS setzt. Lehre: Für ein *starkes*
+  Brett-Vision-Netz ist der Hebel RL/Self-Play, nicht Behavior Cloning. Das BC
+  liefert ein legales, einbettbares, aber spielerisch schwaches Netz — gut als
+  Baseline und als Beweis, dass die Pipeline (Torch→`.cnn`→Rust, Roundtrip
+  < 1.2e-7) trägt.
+- **Hex-Mathe nicht zweimal schreiben**: Die PyTorch-Referenz zieht ihre
+  Nachbar-Geometrie über das Rust-Binding `neighbor_table` — Walls/Torus matchen
+  so die Engine bitgenau, statt die Offset-/Axial-Konvertierung in Python zu
+  duplizieren (eine notorische Fehlerquelle).

@@ -60,24 +60,35 @@ Torus-Mathematik wird **nicht** in Python nachgebaut.
 
 ## 3. Conv-Netz trainieren (Behavior Cloning)
 
-Smoke-Run (Agent macht nur diesen; echte Läufe macht der Nutzer):
+`train_cnn.py` kloniert den stärksten klassischen Autopiloten — den
+A*-`PathPlanner` (+ Tail-Check) — in das `HexConvNet` und exportiert `.cnn`. Die
+Experten-Zustände kommen aus dem Rust-Binding `expert_rollout` (pur Rust, GIL
+frei) mit der **absoluten** Planner-Richtung als Label (das ConvNet gibt
+absolute Scores aus → keine Blickrichtungs-Umrechnung). Beide Topologien werden
+gemeinsam trainiert; jeder Sample läuft durch die Gather-Tabelle seiner
+Topologie (Walls Zero-Pad / Torus Wrap).
+
+Smoke-Run (Agent):
 
 ```bash
 cd python
-uv run --extra train python train_cnn.py --games 8 --epochs 4 \
-  --out training-out/cnn/best.cnn
+uv run --extra train python train_cnn.py --games 20 --epochs 5 \
+  --out training-out/cnn/smoke.cnn
 ```
 
-`train_cnn.py` kloniert einen einfachen **BFS-zum-Futter-Experten** (kürzester
-körperfreier Schritt; BFS über den `neighbor_table`-Graphen liefert die
-Torus-Distanz gratis) in das `HexConvNet` und exportiert `.cnn`. Für einen
-echten Lauf: stärkeren Experten (A*-Pfadplaner-Labels), mehr Spiele/Epochen,
-gemischte Topologien.
+Echter Lauf (vom Nutzer; entspricht Run 001):
 
-> **Labels sind absolut.** Das `ConvNet` gibt absolute Richtungen aus; das
-> Env-Action-Space ist blickrichtungsrelativ. `train_cnn.py` rechnet die
-> Experten-Absolutrichtung per Blickrichtung in die relative Env-Aktion um und
-> trainiert auf dem Absolut-Label.
+```bash
+uv run --extra train python train_cnn.py --games 150 --epochs 40 \
+  --toward-weight 4.0 --out training-out/cnn/best.cnn
+```
+
+> **`--toward-weight` gegen das Kreisen.** Reines BC kollabiert hier zu
+> „sicherem Kreisen" (überlebt lange, frisst kaum). `--toward-weight N`
+> gewichtet die Verlustfunktion auf futter-annähernden Zügen (Flag aus
+> `expert_rollout`) N-fach. Half nur moderat — siehe
+> [`run-001-report`](run-001-report/report.md); ein *starker* Lauf braucht
+> RL/Self-Play, nicht BC.
 
 ## 4. AlphaZero-Conv trainieren
 
@@ -100,8 +111,10 @@ cp python/training-out/cnn/best.cnn crates/snake-core/assets/cnn/best.cnn
 cargo test -p snake-core   # embedded_*-Tests prüfen Laden + legales Spiel
 ```
 
-> **Eingecheckte Dateien**: `crates/snake-core/assets/cnn/best.cnn` und
-> `…/alphazero-cnn/best.cnn` sind deterministische Smoke-Artefakte
-> (`python/gen_cnn_smoke.py`), bis ein echter Lauf sie ersetzt. Untrainiert
-> spielen sie legal, fressen aber kaum (sicheres Kreisen) — wie alle frischen
-> Netze.
+> **Eingecheckte Dateien**:
+> - `crates/snake-core/assets/cnn/best.cnn` = **Run 001** (BC, `--toward-weight 4`,
+>   Walls 11.72 / Periodic 8.55, deployed — siehe
+>   [`run-001-report`](run-001-report/report.md)). Funktionsfähig, aber
+>   spielerisch schwach (überlebt lange, frisst wenig).
+> - `…/alphazero-cnn/best.cnn` = deterministisches Smoke-Artefakt
+>   (`python/gen_cnn_smoke.py`), bis ein echter Self-Play-Lauf es ersetzt.

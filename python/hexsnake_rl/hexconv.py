@@ -85,14 +85,24 @@ class HexConvNet(nn.Module):
 
         self.register_buffer("gather", _gather_index(width, height, boundary))
 
-    def forward(self, planes: th.Tensor, head_idx: th.Tensor) -> th.Tensor:
-        """`planes`: `(B, in_channels, N)`; `head_idx`: `(B,)` cell indices."""
+    def gather_table(self, boundary: str) -> th.Tensor:
+        """Neighbor-gather table for a given topology. The conv geometry differs
+        between walls (zero-pad) and torus (wrap), so mixed-topology training
+        must feed each sample through the table matching its board."""
+        return _gather_index(self.width, self.height, boundary).to(self.gather.device)
+
+    def forward(
+        self, planes: th.Tensor, head_idx: th.Tensor, gather: th.Tensor | None = None
+    ) -> th.Tensor:
+        """`planes`: `(B, in_channels, N)`; `head_idx`: `(B,)` cell indices.
+        `gather` overrides the baked-in table (needed for mixed topologies)."""
         b = planes.shape[0]
+        g = self.gather if gather is None else gather
         x = planes
         for w, bias in zip(self.convs, self.conv_bias):
             pad = th.zeros(b, x.shape[1], 1, dtype=x.dtype, device=x.device)
             xp = th.cat([x, pad], dim=2)  # (B, in, N+1)
-            gathered = xp[:, :, self.gather]  # (B, in, N, 7)
+            gathered = xp[:, :, g]  # (B, in, N, 7)
             # out[b,o,n] = bias[o] + Σ_{i,t} W[o,i,t] · gathered[b,i,n,t]
             x = th.einsum("oit,bint->bon", w, gathered) + bias[None, :, None]
             x = th.tanh(x)

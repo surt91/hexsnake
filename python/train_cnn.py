@@ -1,130 +1,150 @@
-"""Smoke trainer for the hex-conv ConvNet via behavior cloning.
+"""Behavior-cloning trainer for the hex-conv ConvNet.
 
-The agent only runs tiny smoke runs to verify the train -> export -> play
-pipeline; the user runs the real training on stronger hardware (see
-``docs/training/cnn/guide.md``). This script clones a cheap BFS-to-food expert
-into a `HexConvNet` and exports the `.cnn` weights.
+Clones the strongest classical AI — the A* `PathPlanner` (+ tail-check) — into a
+`HexConvNet`, then exports the `.cnn` weights. Expert states come from the Rust
+`expert_rollout` binding (pure Rust, GIL released), labelled with the planner's
+chosen **absolute** move; the ConvNet emits absolute direction scores, so the
+label is just the move's index — no heading conversion.
 
-Why BFS over the Rust ``neighbor_table``: it gives true hop distance including
-torus wrap for free, so we don't re-derive hex/torus math in Python. The expert
-is deliberately simple (shortest safe step toward food) — good enough to prove
-the supervised loop produces a loadable, board-aware net.
+Mixed topologies are handled correctly: the hex convolution's neighbor geometry
+differs between walls (zero-pad) and torus (wrap), so each sample is fed through
+the gather table matching its board.
 
-Run:  python train_cnn.py [--games N] [--epochs E] [--out PATH]
+Run:  python train_cnn.py --games 1500 --epochs 30 --out training-out/cnn/best.cnn
 """
 
 from __future__ import annotations
 
 import argparse
-from collections import deque
 
 import numpy as np
 import torch as th
 import torch.nn as nn
 
-from hexsnake_rl import HexSnakeGym, _native
+from hexsnake_rl import _native
 from hexsnake_rl.export import export_cnn
 from hexsnake_rl.hexconv import HexConvNet
 
 W, H, IN_CH = 16, 12, 4
+PLANE = W * H
 BOUNDARIES = ["walls", "torus"]
 
 
-def bfs_step(neigh, head, food, body, n):
-    """Tap index (0..5) of the first step on a shortest body-free path from
-    `head` to `food`, or None if unreachable."""
-    prev = {head: (head, -1)}
-    q = deque([head])
-    while q:
-        c = q.popleft()
-        if c == food:
-            break
-        for t in range(6):
-            nb = neigh[c * 6 + t]
-            if nb < 0 or nb in prev or (nb in body and nb != food):
-                continue
-            prev[nb] = (c, t)
-            q.append(nb)
-    if food not in prev:
-        return None
-    cur = food
-    while prev[cur][0] != head:
-        cur = prev[cur][0]
-        if cur == head:
-            break
-    return prev[cur][1]
+def collect(games: int, max_ticks: int, seed: int):
+    """Gather expert states for both topologies. Returns planes (N,4,PLANE),
+    head indices (N,), labels (N,), topology id (N,) (0=walls, 1=torus) and a
+    food-approach flag (N,) (1.0 if the expert move advanced toward food)."""
+    planes_all, heads_all, labels_all, topo_all, toward_all = [], [], [], [], []
+    for tid, boundary in enumerate(BOUNDARIES):
+        grids, labels, toward = _native.expert_rollout(boundary, W, H, max_ticks, games, seed)
+        grids = np.asarray(grids, dtype=np.float32).reshape(-1, 3, PLANE)
+        n = grids.shape[0]
+        planes = np.zeros((n, IN_CH, PLANE), dtype=np.float32)
+        planes[:, :3] = grids
+        planes[:, 3] = 1.0 if boundary == "walls" else 0.0  # topology plane
+        heads = grids[:, 1].argmax(axis=1)  # head channel
+        planes_all.append(planes)
+        heads_all.append(heads)
+        labels_all.append(np.asarray(labels, dtype=np.int64))
+        topo_all.append(np.full(n, tid, dtype=np.int64))
+        toward_all.append(np.asarray(toward, dtype=np.float32))
+        print(f"  {boundary}: {n} expert states ({np.mean(toward):.0%} toward food)")
+    return (
+        np.concatenate(planes_all),
+        np.concatenate(heads_all),
+        np.concatenate(labels_all),
+        np.concatenate(topo_all),
+        np.concatenate(toward_all),
+    )
 
 
-def collect(games: int):
-    """Drive games with the expert, recording (planes, head_idx, abs_label)."""
-    rng = np.random.default_rng(0)
-    plane = W * H
-    samples = []
-    for g in range(games):
-        boundary = BOUNDARIES[g % 2]
-        neigh = _native.neighbor_table(W, H, boundary)
-        env = HexSnakeGym(W, H, boundary, max_ticks=400, observation="grid")
-        obs, _ = env.reset(seed=int(rng.integers(0, 1 << 30)))
-        done = False
-        while not done:
-            grid = np.asarray(obs, dtype=np.float32).reshape(3, plane)
-            head = int(grid[1].argmax())
-            food = int(grid[2].argmax())
-            body = {i for i in range(plane) if grid[0, i] > 0.5}
-            # Heading: the body neighbor of the head is the neck (opposite the
-            # heading); recover the heading tap to convert abs -> relative.
-            neck_tap = next(
-                (t for t in range(6) if neigh[head * 6 + t] in body and neigh[head * 6 + t] != head),
-                None,
-            )
-            if neck_tap is None:
-                break
-            heading = (neck_tap + 3) % 6
-
-            tap = bfs_step(neigh, head, food, body, plane)
-            if tap is None:
-                # No safe path: pick any safe neighbor to keep moving.
-                tap = next(
-                    (t for t in range(6) if neigh[head * 6 + t] >= 0 and neigh[head * 6 + t] not in body),
-                    0,
-                )
-
-            planes = np.zeros((IN_CH, plane), dtype=np.float32)
-            planes[:3] = grid
-            planes[3] = 1.0 if boundary == "walls" else 0.0
-            samples.append((planes, head, tap))
-
-            action = (tap - heading) % 6  # absolute tap -> relative action
-            obs, _r, term, trunc, _s = env.step(action)
-            done = term or trunc
-    return samples
+def run_epoch(model, gathers, planes, heads, labels, topo, weights, opt, loss_fn, bs, train):
+    """One pass. Batches are topology-homogeneous so each uses the right gather
+    table. Per-sample `weights` upweight food-seeking moves. Returns (mean loss,
+    accuracy)."""
+    idx = np.arange(len(labels))
+    if train:
+        np.random.shuffle(idx)
+    total_loss, correct, seen = 0.0, 0, 0
+    for tid in (0, 1):
+        sub = idx[topo[idx] == tid]
+        gather = gathers[tid]
+        for i in range(0, len(sub), bs):
+            b = sub[i : i + bs]
+            p = th.from_numpy(planes[b])
+            hd = th.from_numpy(heads[b])
+            y = th.from_numpy(labels[b])
+            wt = th.from_numpy(weights[b])
+            with th.set_grad_enabled(train):
+                logits = model(p, hd, gather)
+                loss = (loss_fn(logits, y) * wt).sum() / wt.sum()
+                if train:
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
+            total_loss += loss.item() * len(b)
+            correct += int((logits.argmax(1) == y).sum())
+            seen += len(b)
+    return total_loss / seen, correct / seen
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--games", type=int, default=20)
-    ap.add_argument("--epochs", type=int, default=5)
+    ap.add_argument("--games", type=int, default=1500, help="games per topology")
+    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--max-ticks", type=int, default=2000)
+    ap.add_argument("--batch", type=int, default=256)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--toward-weight", type=float, default=4.0,
+                    help="loss weight multiplier for moves that advance toward food")
     ap.add_argument("--out", default="training-out/cnn/best.cnn")
     args = ap.parse_args()
 
-    samples = collect(args.games)
-    print(f"collected {len(samples)} expert states")
-    planes = th.from_numpy(np.stack([s[0] for s in samples]))
-    heads = th.tensor([s[1] for s in samples])
-    labels = th.tensor([s[2] for s in samples])
+    th.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
-    # Train on a fixed board geometry; exported weights stay size-agnostic.
-    model = HexConvNet(W, H, "walls", IN_CH, [(4, 8), (8, 8)], [16, 12, 6])
-    opt = th.optim.Adam(model.parameters(), lr=1e-3)
-    loss_fn = nn.CrossEntropyLoss()
+    print(f"collecting expert data ({args.games} games × 2 topologies)…")
+    planes, heads, labels, topo, toward = collect(args.games, args.max_ticks, args.seed)
+    n = len(labels)
+    # Upweight food-seeking moves so the clone commits to food instead of
+    # collapsing into safe circling (the documented failure mode).
+    weights = (1.0 + (args.toward_weight - 1.0) * toward).astype(np.float32)
+    print(f"total {n} states, toward-weight {args.toward_weight}")
+
+    # Train/val split.
+    perm = np.random.permutation(n)
+    n_val = n // 10
+    val, tr = perm[:n_val], perm[n_val:]
+
+    model = HexConvNet(W, H, "walls", IN_CH, [(4, 16), (16, 16)], [32, 24, 6])
+    gathers = [model.gather_table("walls"), model.gather_table("torus")]
+    opt = th.optim.Adam(model.parameters(), lr=args.lr)
+    loss_fn = nn.CrossEntropyLoss(reduction="none")
+
+    best_val = 0.0
+    best_state = None
     for e in range(args.epochs):
-        opt.zero_grad()
-        logits = model(planes, heads)
-        loss = loss_fn(logits, labels)
-        loss.backward()
-        opt.step()
-        print(f"epoch {e}: loss {loss.item():.4f}")
+        model.train()
+        tl, ta = run_epoch(
+            model, gathers, planes[tr], heads[tr], labels[tr], topo[tr], weights[tr],
+            opt, loss_fn, args.batch, True,
+        )
+        model.eval()
+        vl, va = run_epoch(
+            model, gathers, planes[val], heads[val], labels[val], topo[val], weights[val],
+            opt, loss_fn, args.batch, False,
+        )
+        flag = ""
+        if va > best_val:
+            best_val = va
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            flag = " *"
+        print(f"epoch {e:2d}: train loss {tl:.3f} acc {ta:.3f} | val loss {vl:.3f} acc {va:.3f}{flag}")
 
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    print(f"best val accuracy: {best_val:.3f}")
     export_cnn(args.out, model)
     print(f"exported {args.out}")
     return 0
