@@ -620,3 +620,34 @@ dass man es Monate später noch versteht.
   nur ein Architektur-Problem — der naheliegendste nächste Hebel ist trotzdem
   ein größerer Rezeptivbereich (mehr Conv-Layer), damit der Kopf Wände früh
   genug „sieht".
+
+## Plan 03 — Perfektes Spiel: die Gap-Analyse
+
+- **„Perfekt" ist ein Fehlerraten-Problem, kein Reward-Problem**: Beim
+  Planen des nächsten Schritts (gelerntes Netz soll Perfect Games spielen)
+  kippte die Perspektive. Die besten gelernten Netze stehen bei ~1/3 des
+  Maximums (AZ-MLP 53/75.5 vs. 189) — aber die eigentliche Hürde ist nicht
+  „mehr Score", sondern: ein Perfect Game sind ~5 000–10 000 Züge in Folge
+  ohne einen einzigen fatalen Fehler, also eine Per-Zug-Fehlerrate ≲ 10⁻⁴.
+  Reward-Maximierung optimiert den Erwartungswert, Perfektion das Worst-
+  Case-Verhalten auf dem gesamten Spielpfad — zwei verschiedene Ziele.
+- **Der perfekte Lehrer saß die ganze Zeit im Dropdown**: Der HamiltonRider
+  (Serpentinen-Zyklus + vacate-sichere Shortcuts) spielt seit Phase 5
+  beweisbar perfekte Partien. Für Distillation ist er der Anti-A*: Labels
+  deterministisch, global konsistent (statische Funktion des Bretts),
+  niedrige Entropie — genau die Eigenschaften, deren Fehlen das A*-BC
+  (Run 001, 64 % Accuracy, Kreis-Kollaps) scheitern ließ. Und weil der
+  Zyklus von *jedem* Zustand aus ein definiertes Label liefert, ist DAgger
+  (Student spielt, Lehrer labelt) direkt möglich — das Gegenmittel gegen
+  den Distribution Shift, an dem reines BC klassisch stirbt.
+- **Self-Play sieht das Endgame nie**: Warum AlphaZero beim Packen versagt,
+  ist ein Henne-Ei zweiter Ordnung — die kritischen Zustände (Schlange
+  > 50 % des Bretts) tauchen im Self-Play gar nicht erst auf, weil die
+  Policy sie nie erspielt. Geplanter Hebel: Startzustände aus
+  Lehrer-Partien aller Schlangenlängen samplen („Backplay", Salimans &
+  Chen 2018) — dann trainiert das Packen ab Iteration 1 statt nie.
+- **Vacate-Time als Eingabe-Ebene**: Alle bisherigen Brett-Kanäle sind
+  binär („Zelle belegt?"). Die Information, mit der sowohl das zeitbewusste
+  A* als auch der Shortcut-Check rechnen, ist aber „*wann* wird die Zelle
+  frei?" — als normierte Ebene direkt ins Conv-Netz gegeben, muss das Netz
+  die Schwanz-Ordnung nicht mehr aus einer Binärmaske rekonstruieren.
