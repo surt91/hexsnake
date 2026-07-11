@@ -651,3 +651,17 @@ dass man es Monate später noch versteht.
   A* als auch der Shortcut-Check rechnen, ist aber „*wann* wird die Zelle
   frei?" — als normierte Ebene direkt ins Conv-Netz gegeben, muss das Netz
   die Schwanz-Ordnung nicht mehr aus einer Binärmaske rekonstruieren.
+- **Zyklus-Chirurg statt Zyklus-Sklave (Phase-D-Idee, kein Training)**: Der
+  HamiltonRider ist perfekt, weil er einem statischen Zyklus folgt — und
+  langsam aus demselben Grund. Die trainingsfreie Alternative: den
+  Hamilton-Zyklus als *bewegliches* Sicherheitszertifikat halten und ihn
+  pro Tick mit lokalen, orientierungserhaltenden Operationen Richtung
+  Futter umbauen (nur unbelegte Kanten anfassen ⇒ Invariante trivial
+  erhalten). Vorbild ist die „dynamic Hamiltonian cycle repair"-Idee vom
+  Quadratgitter; der Hex-Twist macht sie interessanter: Der
+  Zellen-Adjazenzgraph ist ein Dreiecksgitter (6 Nachbarn, nicht
+  bipartit) — es gibt Dreiecks-Umleitungen, die im Quadratgitter gar
+  nicht existieren, und auf dem Torus zusätzliche Wrap-Kanten. Reicherer
+  Operationskatalog ⇒ der Zyklus sollte sich schneller verbiegen lassen
+  als im klassischen Fall. Bonus: Im Debug-Overlay kann man dem Zyklus
+  beim Umbauen live zusehen.

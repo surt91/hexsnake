@@ -37,6 +37,14 @@ wörtliche Ziel und aufsteigendem „RL-Ruhm":
    perfekt *by construction* (Sicherheits-Maske), gelernt wird nur die
    Effizienz. Garantierter Fallback.
 
+Dazu kommt ein **trainingsfreier** vierter Ansatz als algorithmische
+Messlatte und schnellerer Lehrer:
+
+4. **Ansatz D — Zyklus-Chirurg (dynamische Hamilton-Reparatur)**: beweisbar
+   perfekt wie der HamiltonRider, aber der Zyklus wird pro Tick lokal
+   Richtung Futter umgebaut statt statisch abgefahren. Kein Training,
+   deutlich schneller — siehe Phase D.
+
 ### Warum BC diesmal funktionieren sollte (A vs. Run 001)
 
 Das gescheiterte BC (Run 001) klonte den **A\*-Pfadplaner**: dessen Labels
@@ -179,6 +187,86 @@ Geschwindigkeit.
 **Done wenn:** Eine gelernte Strategie gewinnt jede Partie und ist
 messbar schneller als der HamiltonRider — oder Phase C wurde bewusst
 nicht gebraucht (A/B erfolgreich) und ist als offen markiert.
+
+## Phase D — Zyklus-Chirurg: dynamische Hamilton-Reparatur (kein Training)
+
+Der HamiltonRider ist perfekt, aber langsam: er fährt einen **statischen**
+Zyklus ab und darf ihn nur per Shortcut *entlang der Zyklusordnung*
+abkürzen — liegt das Futter „gegen die Fahrtrichtung" des Zyklus, fährt er
+fast das ganze Brett ab. Die Idee des Zyklus-Chirurgen: **nicht die
+Schlange an den Zyklus anpassen, sondern den Zyklus an das Futter.**
+
+### Kernidee
+
+Die Strategie hält permanent einen expliziten Hamilton-Zyklus als
+**Sicherheitszertifikat** und baut ihn *während des Spiels* lokal um:
+
+1. **Invariante**: Es existiert immer ein gültiger Hamilton-Zyklus über
+   alle Zellen, und der Schlangenkörper liegt als zusammenhängendes
+   Segment in Zyklusordnung darauf. Wer dem Zyklus folgt, kann nie
+   sterben und füllt das Brett am Ende vollständig (`Won`) — derselbe
+   Beweis wie beim HamiltonRider, nur dass sich der Zyklus bewegt.
+2. **Chirurgie pro Tick**: Aus einem kleinen Katalog **lokaler,
+   orientierungserhaltender Umbau-Operationen** (Kantenpaare
+   austauschen, Dreiecks-/Rhombus-Umleitungen) werden greedy diejenigen
+   angewandt, die die Zyklusdistanz Kopf→Futter verringern. Operationen
+   dürfen **keine vom Körper belegten Kanten** anfassen (inkl.
+   Wachstums-Tick beim Fressen) — dadurch bleibt die Invariante trivial
+   erhalten und jeder Umbau ist per Konstruktion sicher.
+3. **Budget statt Optimalität**: Pro Tick nur N Umbau-Versuche in einer
+   lokalen Umgebung des Kopf-Futter-Korridors — deterministisch, O(N),
+   WASM-tauglich. Der Zyklus „fließt" über mehrere Ticks zum Futter.
+4. Die vorhandene **Shortcut-Logik bleibt obendrauf** (Sprünge entlang
+   des *aktuellen* Zyklus mit Vacate-Check) — beide Beschleuniger
+   multiplizieren sich.
+
+Vorbild ist die „dynamic Hamiltonian cycle repair"-Idee vom Quadratgitter
+(bekannt u. a. aus AlphaPhoenix' Perfect-Snake-Video). **Der Hex-Twist:**
+Der Zellen-Adjazenzgraph ist ein *Dreiecksgitter* — 6 Nachbarn statt 4,
+nicht bipartit. Das heißt mehr Kantenpaare pro Umgebung, zusätzliche
+Dreiecks-Operationen, die es im Quadratgitter gar nicht gibt, und auf dem
+Torus noch Wrap-Kanten dazu: der Operationskatalog ist reicher, der
+Zyklus sollte sich *schneller* verbiegen lassen als im klassischen Fall.
+(Ob alle Quadratgitter-Ops ein Hex-Analogon haben und welche Parität die
+Brettmaße brauchen, ist Teil der Arbeit — Startzyklus bleibt die
+Serpentine, also gerade Zeilenzahl wie bisher.)
+
+### Umsetzung
+
+- [ ] **Zyklus-Datenstruktur mit billigen Umbauten**: Zelle→Zyklusindex
+      plus Nachfolger-/Vorgänger-Verkettung, so dass eine lokale Operation
+      O(Segmentlänge) oder besser kostet (Reversal-freie Op-Varianten
+      bevorzugen; sonst kleinere Seite umdrehen). Startzyklus =
+      `serpentine_cycle`.
+- [ ] **Operationskatalog** für das Dreiecksgitter formal aufschreiben
+      (2-opt-Kantentausch, Dreiecks-Detour, Rhombus-Swap; Torus-Varianten)
+      inkl. Bedingung „berührt keine belegte Kante". Jede Op als reine
+      Funktion + Property-Test: Zyklus bleibt gültig (jede Zelle genau
+      einmal, Übergänge adjazent, geschlossen — Validator aus Phase 5
+      wiederverwenden).
+- [ ] **Greedy-Optimierer pro Tick** mit festem Budget; Zielfunktion
+      Zyklusdistanz Kopf→Futter; deterministische Kandidatenreihenfolge
+      (keine HashMap-Iteration!).
+- [ ] **`CycleSurgeon`-Strategie** (`Strategy`-Impl): Zyklus folgen +
+      vorhandene Shortcut-Prüfung; `StrategyDebug`-Pfad = aktueller
+      Zyklus → das Debug-Overlay zeigt das Umbauen **live** (Blog-Gold).
+- [ ] **Tests**: Invarianten-Property-Test über ganze Partien (nie tot,
+      immer `Won` in Budget, beide Topologien, viele Seeds), Determinismus,
+      Körper-liegt-auf-Zyklus-Invariante nach jedem Tick.
+- [ ] **Benchmark & Dropdown**: Perfect-Rate 100 % und ⌀-Ticks deutlich
+      unter HamiltonRider (Ziel: ≥ 30 % schneller; Vergleich auch gegen
+      Pfadplaner-⌀-Ticks als Speed-Referenz ohne Perfektionsgarantie).
+- [ ] **Synergie nutzen**: Der Zyklus-Chirurg ersetzt den HamiltonRider
+      als **Lehrer** in Phase A/B (kürzere, futterorientierte Partien ⇒
+      dichteres Trainingssignal, weniger Rollout-Kosten) und ist die
+      härtere Messlatte für Phase C.
+- [ ] **Blog-Notizen**: Operationskatalog-Herleitung, Dreiecksgitter- vs.
+      Quadratgitter-Vergleich, Overlay-GIF.
+
+**Done wenn:** `CycleSurgeon` gewinnt 100 von 100 Partien in beiden
+Topologien (16×12) und braucht dabei im Mittel messbar weniger Ticks als
+der HamiltonRider; die Zyklus-Invariante ist per Property-Test über ganze
+Partien abgesichert.
 
 ---
 
