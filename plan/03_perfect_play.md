@@ -3,7 +3,34 @@
 Ergänzt [`plan/01_snake.md`](01_snake.md) und [`plan/02_cnn.md`](02_cnn.md).
 Ziel: ein **trainiertes Netz**, das HexSnake **perfekt** spielt — Status
 `Won`, Brett komplett gefüllt (16×12 ⇒ Score 189) — in **beiden Topologien**,
-mit purer Rust/WASM-Inferenz wie bisher.
+mit purer Rust/WASM-Inferenz wie bisher. Dazu ein trainingsfreier
+Referenz-Algorithmus (Phase D), der perfekt *und* schnell spielt.
+
+## Ausführungsmodus (für den umsetzenden Agenten — zuerst lesen)
+
+Dieser Plan ist **selbstständig abarbeitbar**; es kommt kein weiterer
+Kontext vom Nutzer. Verbindliche Regeln:
+
+- **Reihenfolge**: Phase 0 → Phase D → Phase A → Phase B → (Phase C nur
+  bedingt, siehe dort). **Phasen 0, D, A und B sind Pflicht** und werden
+  unabhängig vom Erfolg der jeweils anderen Phasen vollständig
+  ausgeführt. Nur Phase C ist konditional.
+- **Training läuft direkt auf dieser Maschine** (≈32 Cores, NVIDIA-GPU).
+  Anders als in `docs/training/*/guide.md` beschrieben gibt es keine
+  Trennung „Agent macht Smoke-Run, Nutzer trainiert": Der Agent führt
+  nach dem obligatorischen Smoke-Run auch den **echten Lauf** selbst aus.
+  Lange Läufe (Phase B: 6 h) als Hintergrundprozess starten, Log in
+  `python/training-out/…/train.log`, regelmäßig prüfen.
+- **Repo-Konventionen gelten** (siehe `CLAUDE.md`): Vor jedem Commit
+  Skill `/check`; Conventional Commits pro abgeschlossener Checkbox;
+  Blog-Notizen via `/blog-notes`; Trainings-Doku via `/training-docs`;
+  Benchmarks via `/benchmark`. Checkboxen hier im Plan direkt abhaken.
+- **Für jeden Trainingslauf** einen Report unter
+  `docs/training/<name>/run-NNN-report/report.md` anlegen (Muster: die
+  vorhandenen Reports, z. B. `docs/training/alphazero/run-027-report/`).
+- Wo dieser Plan konkrete Zahlen nennt (Budgets, Schwellwerte, Netzgrößen),
+  sind das **Defaults, keine Vorschläge** — abweichen nur mit dokumentierter
+  Begründung im Report.
 
 ## Ausgangslage & Gap-Analyse
 
@@ -26,60 +53,58 @@ Feintuning-Problem. Der entscheidende Perspektivwechsel:
 > Endgame-Zustände (Schlange > 50 % des Bretts) praktisch nie, weil es sie
 > nie erspielen kann (Henne-Ei, vgl. Run AZ-002).
 
-Daraus folgen drei Ansätze mit absteigender Erfolgswahrscheinlichkeit fürs
-wörtliche Ziel und aufsteigendem „RL-Ruhm":
+Die vier Ansätze:
 
-1. **Ansatz A — Hamilton-Distillation (DAgger)**: den beweisbar perfekten
-   `HamiltonRider` in ein Conv-Netz destillieren. Hauptwette.
+1. **Ansatz A — Lehrer-Distillation (DAgger)**: den beweisbar perfekten
+   Zyklus-Lehrer in ein Conv-Netz destillieren. Hauptwette fürs wörtliche
+   Ziel.
 2. **Ansatz B — AlphaZero-Conv + Endgame-Curriculum**: Self-Play, aber mit
-   Startzuständen aus Lehrer-Partien aller Schlangenlängen. RL-Pfad.
-3. **Ansatz C — Gelernte Shortcut-Policy über dem Hamilton-Zyklus**:
-   perfekt *by construction* (Sicherheits-Maske), gelernt wird nur die
-   Effizienz. Garantierter Fallback.
-
-Dazu kommt ein **trainingsfreier** vierter Ansatz als algorithmische
-Messlatte und schnellerer Lehrer:
-
-4. **Ansatz D — Zyklus-Chirurg (dynamische Hamilton-Reparatur)**: beweisbar
-   perfekt wie der HamiltonRider, aber der Zyklus wird pro Tick lokal
-   Richtung Futter umgebaut statt statisch abgefahren. Kein Training,
-   deutlich schneller — siehe Phase D.
+   Startzuständen aus Lehrer-Partien aller Schlangenlängen. RL-Pfad,
+   Pflicht unabhängig vom Ausgang von A.
+3. **Ansatz C — Gelernte Shortcut-Policy** (konditional): perfekt *by
+   construction* (Sicherheits-Maske), gelernt wird nur die Effizienz.
+4. **Ansatz D — Zyklus-Chirurg (kein Training)**: dynamische
+   Hamilton-Zyklus-Reparatur; beweisbar perfekt, auf minimale Ticks
+   optimiert. Wird **vor** A/B gebaut und dient dort als Lehrer.
 
 ### Warum BC diesmal funktionieren sollte (A vs. Run 001)
 
 Das gescheiterte BC (Run 001) klonte den **A\*-Pfadplaner**: dessen Labels
 sind mehrdeutig (viele gleich gute Züge), global inkonsistent (Pfad hängt
 von der ganzen Historie ab) und decken Off-Policy-Zustände nicht ab —
-64 % Accuracy, Kreis-Kollaps. Der **HamiltonRider** ist das Gegenteil:
+64 % Accuracy, Kreis-Kollaps. Ein Zyklus-Lehrer (HamiltonRider bzw.
+Zyklus-Chirurg) ist das Gegenteil:
 
-- **deterministisch und global konsistent** — der Zyklus ist eine statische
-  Funktion des Bretts; das Ziel-Label ist fast immer „nächste Zelle im
-  Zyklus", gelegentlich ein Shortcut. Sehr niedrige Label-Entropie.
-- **von jedem Zustand aus definiert** — `HamiltonRider::new(board)` +
-  `next_move(state)` funktioniert von beliebigen Positionen. Damit ist
-  **DAgger** möglich: der *Student* spielt, der Lehrer labelt jeden
-  besuchten Zustand — das behebt den Distribution Shift, die klassische
-  BC-Todesursache.
+- **deterministisch und konsistent** — das Ziel-Label ist fast immer
+  „nächste Zelle im Zyklus", gelegentlich ein Shortcut. Sehr niedrige
+  Label-Entropie.
+- **von jedem Zustand aus definiert** — der Lehrer liefert für jeden
+  erreichbaren `GameState` einen Zug. Damit ist **DAgger** möglich: der
+  *Student* spielt, der Lehrer labelt jeden besuchten Zustand — das behebt
+  den Distribution Shift, die klassische BC-Todesursache.
 - **inhärent sicher** — wer dem Zyklus folgt, stirbt nie; kleine
   Abweichungen werden vom nächsten DAgger-Zyklus korrigiert.
 
 ### Neue Eingaberepräsentation: Vacate-Time-Ebene
 
-Wir sind nicht an die bisherigen Kanäle gebunden. Die entscheidende
-Information für sicheres Packen ist nicht „Zelle belegt?", sondern **„wann
-wird sie frei?"** — exakt die Größe, mit der `shortcut_is_safe` und das
-zeitbewusste A* rechnen. Deshalb ersetzt/ergänzt eine **Vacate-Time-Ebene**
-(je Körperzelle: Ticks bis der Schwanz sie räumt, normiert auf die
-Schlangenlänge; frei = 0) die binäre Körper-Ebene. Kanäle neu:
+Die entscheidende Information für sicheres Packen ist nicht „Zelle
+belegt?", sondern **„wann wird sie frei?"** — exakt die Größe, mit der
+`shortcut_is_safe` und das zeitbewusste A* rechnen. Deshalb bekommt das
+Conv-Netz eine **fünfte Ebene**. Kanal-Layout (Reihenfolge fix, die ersten
+vier identisch zum Bestand, damit 4-Kanal-Assets ladbar bleiben):
 
-- `vacate` — normierte Frei-ab-Zeit (Kopf = 1.0, Schwanzspitze ≈ 1/len),
-- `head` — Kopfzelle (1.0),
-- `food` — Futterzelle (1.0),
-- `topology` — konstante Ebene (1.0 Walls / 0.0 Torus).
+| # | Kanal | Wert |
+|---|---|---|
+| 0 | `body` | 1.0 auf Körperzellen ohne Kopf |
+| 1 | `head` | 1.0 auf der Kopfzelle |
+| 2 | `food` | 1.0 auf der Futterzelle |
+| 3 | `topology` | konstant 1.0 (Walls) / 0.0 (Torus) |
+| 4 | `vacate` | Körperzelle mit Index k **vom Schwanz** (Schwanz k=1, Kopf k=len): Wert `k/len`; freie Zellen 0.0 |
 
-Das `.cnn`-Format trägt die Kanalzahl bereits im Header — kein
-Formatbruch; die bestehenden 4-Kanal-Assets bleiben ladbar. Das
-Hunger-Feature bleibt draußen (Run 026: netto schädlich).
+Die Kanalzahl steht bereits im `.cnn`-Header; der Rust-Plane-Builder wird
+kanalzahl-gesteuert (`in_channels == 4` ⇒ Ebenen 0–3, `== 5` ⇒ 0–4,
+alles andere ⇒ Fehler). Das Hunger-Feature bleibt draußen (Run 026:
+netto schädlich).
 
 ---
 
@@ -87,186 +112,294 @@ Hunger-Feature bleibt draußen (Run 026: netto schädlich).
 
 Erst messen können, dann trainieren.
 
-- [ ] **Perfect-Rate im Benchmark**: `examples/benchmark.rs` (und der
-      Skill `/benchmark`) melden zusätzlich `won%` (Status `Won`) und
-      ⌀-Ticks-bis-Sieg je Strategie/Topologie. Referenzlauf: HamiltonRider
-      muss 100 % zeigen (Torus) — das validiert die Metrik.
-- [ ] **`bench_cnn`-Example** analog `bench_mlp`: beliebige `.cnn`-Datei
-      ohne Rebuild benchmarken (Perfect-Rate inklusive).
-- [ ] **Erfolgskriterium festnageln** (in diesem Plan, §Risiken):
-      *Primärziel* ≥ 95 % Perfect-Rate über 100 Seeds auf 16×12, beide
-      Topologien, mit purem Netz-Argmax über die sicheren Züge
-      (Standard-Masking wie bei allen Netz-Strategien, keine Suche).
-      *Stretch*: 100 % sowie 24×18.
-- [ ] **Vacate-Time-Ebene** in `snake-core` (Plane-Builder) und im
-      PyTorch-Spiegel (`hexsnake_rl/hexconv.py`); Kanalzahl-Parameter
-      durchziehen, `verify_cnn_roundtrip.py` deckt die neue Ebene ab.
-- [ ] **Blog-Notiz**: Gap-Analyse + Fehlerraten-Argument festhalten.
+- [ ] **Perfect-Rate im Benchmark**: `crates/snake-core/examples/benchmark.rs`
+      um zwei Spalten erweitern: `won%` (Anteil Partien mit Status `Won`)
+      und `⌀ticks(won)` (mittlere Ticks der gewonnenen Partien; `—` wenn
+      keine). Den Skill `/benchmark` (`.claude/skills/benchmark/SKILL.md`)
+      entsprechend aktualisieren. Referenzlauf mit
+      `cargo run --release -p snake-core --example benchmark -- 50 20000`:
+      HamiltonRider muss auf dem Torus 100 % `won` zeigen — das validiert
+      die Metrik. (Tick-Limit 20 000, damit Walls-Hamilton-Partien nicht
+      am Limit abgeschnitten werden.)
+- [ ] **`bench_cnn`-Example** (`crates/snake-core/examples/bench_cnn.rs`)
+      analog zu `bench_mlp`: CLI `<datei.cnn> <spiele> <max_ticks>`,
+      bencht die Datei als `ConvNet`-Strategie (6-Output) bzw. als
+      `AlphaZeroConv` (7-Output, Sims wie `embedded()`), erkennbar an der
+      Output-Dimension des Head. Gibt Score, `won%`, `⌀ticks` je Topologie
+      aus.
+- [ ] **Vacate-Time-Ebene**: Plane-Builder in
+      `crates/snake-core/src/nn/conv.rs` auf 4-oder-5 Kanäle erweitern
+      (Tabelle oben); PyTorch-Spiegel `python/hexsnake_rl/hexconv.py`
+      identisch erweitern; `python/verify_cnn_roundtrip.py` prüft
+      zusätzlich ein 5-Kanal-Netz (Toleranz wie bisher, ~1e-6). Unit-Tests
+      in Rust: Vacate-Werte einer bekannten Schlange, 4-Kanal-Netze laden
+      weiterhin (Regress).
+- [ ] **Blog-Notiz** (falls beim Umsetzen Neues auffällt; die Gap-Analyse
+      selbst ist schon notiert).
 
-**Done wenn:** Der Benchmark weist Perfect-Rate aus (Hamilton = 100 % auf
-dem Torus), und ein 5-Kanal-Netz läuft bitgenau durch den Roundtrip-Test.
+**Done wenn:** Der Benchmark weist `won%` aus (Hamilton = 100 % auf dem
+Torus), `bench_cnn` läuft gegen eine eingecheckte `.cnn`-Datei, und ein
+5-Kanal-Netz geht bitgenau durch den Roundtrip-Test.
 
-## Phase A — Hamilton-Distillation mit DAgger (Hauptwette)
+**Erfolgskriterium des Gesamtplans** (gilt für A und B): *Primärziel* =
+≥ 95 % Perfect-Rate über 100 Partien (Board-Seeds 0–99) auf 16×12, in
+**beiden** Topologien, mit purem Netz-Argmax über die sicheren Züge
+(Standard-Masking wie bei allen Netz-Strategien, keine Suche zur
+Inferenzzeit). *Stretch*: 100 % sowie 24×18.
 
-- [ ] **`hamilton_rollout`-Binding** (snake-py, analog `expert_rollout`):
-      Lehrer-Partien beider Topologien, Zustände + **absolute**
-      Lehrer-Richtung als Label, GIL-frei.
-- [ ] **`dagger_rollout`-Binding**: nimmt ein Student-`.cnn`, lässt den
-      *Studenten* (Argmax über sichere Züge) spielen und labelt jeden
-      besuchten Zustand mit dem Lehrer-Zug. Rückgabe wie oben; komplett in
-      Rust, parallel über Partien.
-- [ ] **`train_distill.py`**: Runde 0 = reines BC auf Lehrer-Partien;
-      danach DAgger-Iterationen (Aggregat-Datensatz wächst). Metriken je
-      Runde: Per-Move-Agreement, greedy Perfect-Rate/⌀-Score auf
-      Eval-Seeds (Deployment-Modus! — Lehre aus Run 022–025).
-      Checkpoint-Auswahl nach Perfect-Rate, Tiebreak ⌀-Ticks.
-- [ ] **Fehleranalyse-Werkzeug**: Zustände, in denen der Student vom
-      Lehrer abweicht *und* die Partie danach verliert, als Seeds/Ticks
-      dumpen — gezielte DAgger-Nachschulung statt blindem Mehr-Budget.
-- [ ] **Smoke-Run** (Agent) + `docs/training/distill/guide.md` (Skill
-      `/training-docs`); Architektur klein starten (≈ Run-AZ-001-Größe),
-      erst bei Accuracy-Plateau wachsen.
-- [ ] **Echter Lauf (Nutzer)**, Report, Deployment als `ConvNet`-Asset
-      (ersetzt das schwache BC-Netz aus Run 001) — oder als eigener
-      Dropdown-Eintrag, falls beide sehenswert sind.
-- [ ] **Blog-Notizen**: DAgger-Verlauf (Agreement vs. Perfect-Rate!),
-      Vacate-Ebene-Ablation, Vergleich zu Run 001.
-
-**Done wenn:** Das destillierte Netz erreicht das Primärziel aus Phase 0
-(≥ 95 % Perfect-Rate, 16×12, beide Topologien) — oder die Fehleranalyse
-zeigt ein strukturelles Limit, das dokumentiert ist (→ Gate für B/C).
-
-## Phase B — AlphaZero-Conv mit Endgame-Curriculum (RL-Pfad)
-
-Parallel zu A startbar (Nutzer-Hardware), aber A hat Priorität. Der
-Blog-Mehrwert: *lernt* RL Perfektion, statt sie zu imitieren?
-
-- [ ] **Start-State-Sampler**: `az_conv_selfplay --start-from-teacher` —
-      Startzustände aus Lehrer-Partien (HamiltonRider), Schlangenlänge
-      gleichverteilt (oder endgame-gewichtet) von 3 bis ~90 % des Bretts.
-      Bricht das Henne-Ei aus Run AZ-002: Packen wird ab Iteration 1
-      trainiert (Idee: „Backplay"/Curriculum aus einer Demonstration,
-      Salimans & Chen 2018).
-- [ ] **Rezeptivfeld**: Option auf tieferen Conv-Stack
-      (`--conv-channels 16 16 16 …`), damit der Kopf Wände früh sieht
-      (Hypothese aus Run AZ-001); WASM-Inferenzkosten messen, bevor
-      eingebettet wird.
-- [ ] **Value-Target fürs Endgame** prüfen: Return-Normierung, die „Brett
-      gefüllt" klar von „lange überlebt" trennt (Won-Bonus im Reward der
-      Suche), sonst bleibt Kreisen lokal ununterscheidbar.
-- [ ] **Echter Lauf (Nutzer)** mit `--max-hours`-Budget; Abbruchkriterium
-      vorab festlegen (z. B. Walls-⌀ < 60 nach 6 h ⇒ Ansatz einfrieren,
-      Ergebnis dokumentieren — Lehre aus Run 026/027: Compute ersetzt
-      keinen Lernhebel).
-- [ ] **Vergleichstabelle A vs. B** (Perfect-Rate, ⌀-Score, ⌀-Ticks,
-      Params, Trainingskosten) im Report + Blog-Notizen.
-
-**Done wenn:** Der Walls-Kreis-Kollaps ist gebrochen (Walls-⌀ deutlich
-über Run 029) und die Perfect-Rate ist messbar > 0 — *oder* das negative
-Ergebnis ist mit Abbruchkriterium sauber dokumentiert.
-
-## Phase C — Gelernte Shortcut-Policy (garantierter Fallback)
-
-Nur falls A **und** B das Primärziel verfehlen — oder als Bonus-Strategie.
-Ehrliche Einordnung: Perfektion kommt hier aus der Maske, gelernt wird die
-Geschwindigkeit.
-
-- [ ] **Aktionsraum umbauen**: Kandidaten = alle per `shortcut_is_safe`
-      beweisbar sicheren Sprünge entlang der Zyklusordnung (+ „Zyklus
-      folgen"). *Jede* Policy über diesem Aktionsraum spielt perfekt.
-- [ ] **Kleines Scoring-Netz** (MLP über Kandidaten-Features:
-      Zyklus-Distanzgewinn, Vacate-Slack, Futter-Nähe, Schlangenlänge)
-      wählt den Kandidaten; Training per ES in `snake-train`
-      (vorhandener `evolve`-Kern), Fitness = −Ticks bis `Won`.
-- [ ] **Benchmark**: 100 % Perfect-Rate (per Konstruktion) und weniger
-      ⌀-Ticks als der heuristische HamiltonRider; sonst lohnt der Eintrag
-      nicht.
-- [ ] **Blog-Notiz**: „perfekt by construction, gelernt effizient" als
-      Kontrast zu A/B.
-
-**Done wenn:** Eine gelernte Strategie gewinnt jede Partie und ist
-messbar schneller als der HamiltonRider — oder Phase C wurde bewusst
-nicht gebraucht (A/B erfolgreich) und ist als offen markiert.
-
-## Phase D — Zyklus-Chirurg: dynamische Hamilton-Reparatur (kein Training)
+## Phase D — Zyklus-Chirurg: dynamische Hamilton-Reparatur (kein Training, Pflicht)
 
 Der HamiltonRider ist perfekt, aber langsam: er fährt einen **statischen**
 Zyklus ab und darf ihn nur per Shortcut *entlang der Zyklusordnung*
-abkürzen — liegt das Futter „gegen die Fahrtrichtung" des Zyklus, fährt er
-fast das ganze Brett ab. Die Idee des Zyklus-Chirurgen: **nicht die
-Schlange an den Zyklus anpassen, sondern den Zyklus an das Futter.**
+abkürzen — liegt das Futter „gegen die Fahrtrichtung", fährt er fast das
+ganze Brett ab. Der Zyklus-Chirurg passt stattdessen **den Zyklus ans
+Futter an**. Vorbild: „dynamic Hamiltonian cycle repair" vom Quadratgitter
+(AlphaPhoenix); der Hex-Adjazenzgraph ist ein Dreiecksgitter (6 Nachbarn,
+nicht bipartit) und erlaubt zusätzliche Operationen.
 
-### Kernidee
+### Sicherheitsargument
 
-Die Strategie hält permanent einen expliziten Hamilton-Zyklus als
-**Sicherheitszertifikat** und baut ihn *während des Spiels* lokal um:
+Invariante: Es existiert stets ein gültiger Hamilton-Zyklus über alle
+Zellen, und **Umbauten fassen nie eine vom Schlangenkörper belegte Kante
+an**. Folgt die Schlange dem Zyklus, liegt ihr Körper als
+zusammenhängendes Segment darauf und sie kann nie kollidieren; am Ende
+füllt sie das Brett (`Won`) — derselbe Beweis wie beim HamiltonRider, nur
+dass sich der Zyklus bewegt. (Die Startaufstellung liegt evtl. nicht auf
+dem Zyklus; wie beim HamiltonRider deckt der Vacate-Check die ersten Züge
+ab, danach greift die Invariante. Der Property-Test unten ist der
+Schiedsrichter.)
 
-1. **Invariante**: Es existiert immer ein gültiger Hamilton-Zyklus über
-   alle Zellen, und der Schlangenkörper liegt als zusammenhängendes
-   Segment in Zyklusordnung darauf. Wer dem Zyklus folgt, kann nie
-   sterben und füllt das Brett am Ende vollständig (`Won`) — derselbe
-   Beweis wie beim HamiltonRider, nur dass sich der Zyklus bewegt.
-2. **Chirurgie pro Tick**: Aus einem kleinen Katalog **lokaler,
-   orientierungserhaltender Umbau-Operationen** (Kantenpaare
-   austauschen, Dreiecks-/Rhombus-Umleitungen) werden greedy diejenigen
-   angewandt, die die Zyklusdistanz Kopf→Futter verringern. Operationen
-   dürfen **keine vom Körper belegten Kanten** anfassen (inkl.
-   Wachstums-Tick beim Fressen) — dadurch bleibt die Invariante trivial
-   erhalten und jeder Umbau ist per Konstruktion sicher.
-3. **Budget statt Optimalität**: Pro Tick nur N Umbau-Versuche in einer
-   lokalen Umgebung des Kopf-Futter-Korridors — deterministisch, O(N),
-   WASM-tauglich. Der Zyklus „fließt" über mehrere Ticks zum Futter.
-4. Die vorhandene **Shortcut-Logik bleibt obendrauf** (Sprünge entlang
-   des *aktuellen* Zyklus mit Vacate-Check) — beide Beschleuniger
-   multiplizieren sich.
+### Datenstruktur
 
-Vorbild ist die „dynamic Hamiltonian cycle repair"-Idee vom Quadratgitter
-(bekannt u. a. aus AlphaPhoenix' Perfect-Snake-Video). **Der Hex-Twist:**
-Der Zellen-Adjazenzgraph ist ein *Dreiecksgitter* — 6 Nachbarn statt 4,
-nicht bipartit. Das heißt mehr Kantenpaare pro Umgebung, zusätzliche
-Dreiecks-Operationen, die es im Quadratgitter gar nicht gibt, und auf dem
-Torus noch Wrap-Kanten dazu: der Operationskatalog ist reicher, der
-Zyklus sollte sich *schneller* verbiegen lassen als im klassischen Fall.
-(Ob alle Quadratgitter-Ops ein Hex-Analogon haben und welche Parität die
-Brettmaße brauchen, ist Teil der Arbeit — Startzyklus bleibt die
-Serpentine, also gerade Zeilenzahl wie bisher.)
+- Zellindex = `row * width + col` (row-major, Offset-Koordinaten).
+- Zyklus als doppelt verkettete Ringe: `next: Vec<usize>`,
+  `prev: Vec<usize>`; initialisiert aus `serpentine_cycle(width, height)`
+  (`crates/snake-core/src/strategy/hamilton.rs`). Kompatibilität =
+  `HamiltonRider::compatible` (gerade Zeilenzahl).
+- **Belegte Kante**: ungerichtetes Paar `{u, v}`, wenn `u` und `v`
+  aufeinanderfolgende Schlangensegmente sind. Pro Tick einmal als
+  `HashSet`-freie Struktur aufbauen (z. B. `Vec<Option<usize>>`
+  „Körper-Nachfolger je Zelle" — Determinismus!).
+- Zyklusdistanz `d(a→b)` = Schritte entlang `next` von `a` bis `b`
+  (Walk, O(n); n ≤ 768 bei 32×24 — unkritisch).
 
-### Umsetzung
+### Operationskatalog (alle nur auf unbelegten Kanten)
 
-- [ ] **Zyklus-Datenstruktur mit billigen Umbauten**: Zelle→Zyklusindex
-      plus Nachfolger-/Vorgänger-Verkettung, so dass eine lokale Operation
-      O(Segmentlänge) oder besser kostet (Reversal-freie Op-Varianten
-      bevorzugen; sonst kleinere Seite umdrehen). Startzyklus =
-      `serpentine_cycle`.
-- [ ] **Operationskatalog** für das Dreiecksgitter formal aufschreiben
-      (2-opt-Kantentausch, Dreiecks-Detour, Rhombus-Swap; Torus-Varianten)
-      inkl. Bedingung „berührt keine belegte Kante". Jede Op als reine
-      Funktion + Property-Test: Zyklus bleibt gültig (jede Zelle genau
-      einmal, Übergänge adjazent, geschlossen — Validator aus Phase 5
-      wiederverwenden).
-- [ ] **Greedy-Optimierer pro Tick** mit festem Budget; Zielfunktion
-      Zyklusdistanz Kopf→Futter; deterministische Kandidatenreihenfolge
-      (keine HashMap-Iteration!).
-- [ ] **`CycleSurgeon`-Strategie** (`Strategy`-Impl): Zyklus folgen +
-      vorhandene Shortcut-Prüfung; `StrategyDebug`-Pfad = aktueller
-      Zyklus → das Debug-Overlay zeigt das Umbauen **live** (Blog-Gold).
-- [ ] **Tests**: Invarianten-Property-Test über ganze Partien (nie tot,
-      immer `Won` in Budget, beide Topologien, viele Seeds), Determinismus,
-      Körper-liegt-auf-Zyklus-Invariante nach jedem Tick.
-- [ ] **Benchmark & Dropdown**: Perfect-Rate 100 % und ⌀-Ticks deutlich
-      unter HamiltonRider (Ziel: ≥ 30 % schneller; Vergleich auch gegen
-      Pfadplaner-⌀-Ticks als Speed-Referenz ohne Perfektionsgarantie).
-- [ ] **Synergie nutzen**: Der Zyklus-Chirurg ersetzt den HamiltonRider
-      als **Lehrer** in Phase A/B (kürzere, futterorientierte Partien ⇒
-      dichteres Trainingssignal, weniger Rollout-Kosten) und ist die
-      härtere Messlatte für Phase C.
-- [ ] **Blog-Notizen**: Operationskatalog-Herleitung, Dreiecksgitter- vs.
-      Quadratgitter-Vergleich, Overlay-GIF.
+1. **Relocate (O(1), keine Umkehr)** — Zelle `x` als Umweg in Kante
+   `(a→b)` einfügen: Voraussetzungen `x ∉ {a,b}`, `x` keine
+   Schlangenzelle, `x` adjazent zu `a` **und** `b`, mit `p = prev[x]`,
+   `q = next[x]`: `p` adjazent `q`, und die Kanten `(a,b)`, `(p,x)`,
+   `(x,q)` unbelegt. Anwendung: `next[p]=q; next[a]=x; next[x]=b` (+
+   `prev` spiegeln). Auf dem Dreiecksgitter ist `p` adjazent `q` häufig
+   (beide sind Nachbarn von `x`) — das ist die Brot-und-Butter-Operation.
+2. **2-opt (Segmentumkehr)** — Kanten `(a→b)` und `(c→d)` entfernen,
+   `(a→c)` und `(b→d)` einfügen, Segment `b…c` umdrehen. Voraussetzungen:
+   `a` adjazent `c`, `b` adjazent `d`, beide entfernten Kanten unbelegt,
+   **keine Schlangenzelle im Segment `b…c`** (sonst würde die
+   Körperrichtung gegen die Zyklusrichtung laufen), Segmentlänge ≤ 32
+   (Kostendeckel für die Umkehr).
 
-**Done wenn:** `CycleSurgeon` gewinnt 100 von 100 Partien in beiden
-Topologien (16×12) und braucht dabei im Mittel messbar weniger Ticks als
-der HamiltonRider; die Zyklus-Invariante ist per Property-Test über ganze
-Partien abgesichert.
+Jede Operation als reine Funktion mit `apply`/Bedingungs-Check; nach
+`apply` sind `next`/`prev` konsistent.
+
+### Optimierung pro Tick (deterministisch, budgetiert)
+
+```text
+d0 = d(head → food)
+wiederhole bis keine Verbesserung oder 256 Versuche:
+  laufe den Zykluspfad head→food entlang (max. 64 Zellen Fenster);
+  für jede Pfadkante (a→b), in fester Reihenfolge:
+    für jeden Kandidaten (Relocate über alle x ∈ N(a)∩N(b) in
+    Direction::ALL-Reihenfolge; dann 2-opt über c ∈ N(a), d = next[c]):
+      wenn Bedingungen erfüllt: tentativ anwenden,
+      d1 = d(head → food) neu berechnen;
+      d1 < d0 ⇒ behalten (d0 = d1), sonst exakt zurückrollen
+```
+
+Kein RNG, keine HashMap-Iteration — gleiche Eingabe ⇒ gleicher Zyklus.
+
+### Zugwahl
+
+Wie `HamiltonRider::next_move`, nur auf dem **aktuellen** Zyklus: dem
+Zyklus folgen, plus die vorhandene Shortcut-Prüfung (Sprung entlang der
+Zyklusordnung, wenn `shortcut_is_safe` mit Vacate-Zeiten zustimmt). Dazu
+die Shortcut-/Vacate-Logik aus `hamilton.rs` in eine gemeinsame Funktion
+extrahieren (`pub(crate)`), die beide Strategien nutzen —
+**HamiltonRider-Verhalten muss bitidentisch bleiben** (bestehende Tests
+als Regress-Schutz).
+
+### Checkliste
+
+- [ ] `crates/snake-core/src/strategy/cycle_surgeon.rs`: Datenstruktur,
+      Ops, Optimierer, `CycleSurgeon`-Strategie (`Strategy`-Impl);
+      `StrategyDebug.path` = aktueller Zyklus ab Kopf (Overlay zeigt das
+      Umbauen live).
+- [ ] Zyklus-Validator aus den `hamilton.rs`-Tests als wiederverwendbaren
+      Helper heben (jede Zelle genau einmal, Übergänge adjazent,
+      geschlossen) und nach **jeder** Op im Test prüfen.
+- [ ] **Property-Tests**: (1) je 20 Seeds × beide Topologien auf 16×12,
+      max 20 000 Ticks ⇒ alle Partien enden `Won`; (2) Validator nach
+      jedem Tick grün; (3) Determinismus (zwei Läufe, gleicher Seed ⇒
+      identische Zugfolge); (4) 24×18 ein Stichproben-Seed ⇒ `Won`.
+- [ ] **Dropdown + Benchmark**: `StrategyChoice::CycleSurgeon` in
+      `crates/snake-app/src/settings.rs` (`ALL`, `label`,
+      `compatible_with` wie Hamilton) und `game_view.rs`; Aufnahme in
+      `examples/benchmark.rs`.
+- [ ] **Benchmark-Ziel**: 100 % `won` in beiden Topologien (16×12, 100
+      Partien, 20 000 Ticks) und ⌀-Ticks ≥ 30 % unter HamiltonRider.
+      Wird das Speed-Ziel verfehlt: Fenster/Budget tunen, ggf. Ops
+      ergänzen; Ergebnis im Blog notieren, aber `won%` hat Vorrang.
+- [ ] **Blog-Notizen**: Operationskatalog, Dreiecks- vs. Quadratgitter,
+      Benchmark-Zahlen, Overlay-Beobachtungen.
+
+**Done wenn:** `CycleSurgeon` gewinnt 100/100 Partien in beiden Topologien
+(16×12) und ist im Mittel ≥ 30 % schneller (Ticks) als der HamiltonRider;
+alle Property-Tests grün; im Dropdown wählbar.
+
+## Phase A — Lehrer-Distillation mit DAgger (Pflicht)
+
+Lehrer = `CycleSurgeon` (aus Phase D; sollte D wider Erwarten scheitern:
+`HamiltonRider`). Student = `HexConv`-Netz mit 5 Kanälen (Phase 0),
+6 absolute Outputs (wie `ConvNet`).
+
+### Neue snake-py-Bindings (`crates/snake-py/src/lib.rs`)
+
+Alle GIL-frei (`py.allow_threads`), parallel über Partien (rayon), Muster
+`expert_rollout`:
+
+- [ ] `teacher_rollout(boundary, width, height, games, seed, max_ticks)`
+      → `(states, labels, outcomes)`: Lehrer spielt; je Tick die
+      5-Kanal-Ebenen (über den Rust-Plane-Builder — eine Quelle der
+      Wahrheit) und die **absolute** Lehrer-Richtung (0–5 =
+      `Direction::ALL`-Index) als Label; `outcomes` je Partie
+      `(won, score, ticks)`.
+- [ ] `dagger_rollout(cnn_text, boundary, width, height, games, seed,
+      max_ticks)` → gleiche Rückgabe: **Student** (Argmax der
+      `ConvNet`-Scores über die sicheren Züge) spielt; parallel läuft der
+      Lehrer im **Lockstep** auf denselben Zuständen mit (eigene Instanz
+      pro Partie, `teacher.next_move(&state)` vor jedem Student-Tick) und
+      liefert das Label für jeden besuchten Zustand.
+- [ ] `cnn_eval_games(cnn_text, boundary, width, height, games,
+      seed_base, max_ticks)` → `Vec<(won, score, ticks)>`: greedy
+      Deployment-Eval für Checkpoint-Auswahl (Board-Seeds
+      `seed_base..seed_base+games`).
+
+### Trainings-Skript `python/train_distill.py`
+
+- [ ] CLI: `--width/--height` (Default 16×12), `--bc-games` (Default 200
+      je Topologie), `--dagger-rounds` (Default 8), `--dagger-games`
+      (Default 100 je Topologie und Runde), `--epochs-per-round` (Default
+      10), `--lr` (1e-3, Adam), `--batch` (256), `--conv-channels`
+      (Default `16 16`), `--head-hidden` (Default `24`), `--seed`,
+      `--out`.
+- [ ] Ablauf: Runde 0 = BC auf `teacher_rollout`-Daten (beide Topologien
+      gemischt); Runden 1…R = `dagger_rollout` mit dem aktuellen Netz,
+      neue Daten ans **Aggregat** anhängen, weitertrainieren
+      (Cross-Entropy auf die 6 absoluten Richtungen, kein
+      Toward-Weighting — der Lehrer ist schon futterorientiert).
+- [ ] Nach jeder Runde: `cnn_eval_games` auf Eval-Seeds 10 000–10 099,
+      beide Topologien, `max_ticks` 20 000; loggen: Per-Move-Agreement
+      (Holdout), `won%`, ⌀Score, ⌀Ticks. **Checkpoint-Auswahl**: höchste
+      `min(won%_walls, won%_periodic)`, Tiebreak weniger ⌀Ticks
+      (Deployment-Modus-Lehre aus Run 022–025; `best.cnn` laufend
+      sichern).
+- [ ] **Fehleranalyse**: Partien, die der Student verliert, als
+      `(board_seed, tick, zustand)`-Liste dumpen (`--dump-failures`);
+      wenn `won%` stagniert, gezielt DAgger-Partien mit diesen Seeds
+      nachschieben.
+- [ ] **Smoke-Run zuerst** (`--bc-games 10 --dagger-rounds 1
+      --dagger-games 5 --epochs-per-round 2`, Ausgabe nach `/tmp`), dann
+      der **echte Lauf direkt auf dieser Maschine** (Defaults oben;
+      Richtwert < 2 h). Bei Agreement-Plateau < 99 % zuerst
+      `--conv-channels 24 24`, dann `16 16 16` probieren (je ein Lauf,
+      Ergebnisse in den Report).
+- [ ] **Doku**: `docs/training/distill/guide.md` (Skill
+      `/training-docs`), Run-Report, Blog-Notizen (Agreement- vs.
+      `won%`-Kurve!).
+- [ ] **Deployment**: Bestes Netz nach
+      `crates/snake-core/assets/cnn/best.cnn`, wenn es den bisherigen
+      `ConvNet`-Stand (Run 001: Walls 11.7 / Periodic 8.6) schlägt —
+      davon ist auszugehen; `cargo test -p snake-core` (embedded-Tests)
+      und `/check` danach.
+
+**Done wenn:** Der beste Checkpoint erreicht das Primärziel (≥ 95 %
+`won%` auf 16×12, beide Topologien, greedy) — **oder** drei
+Architektur-/DAgger-Varianten sind gelaufen und der beste Stand ist mit
+Fehleranalyse im Report dokumentiert. In beiden Fällen weiter mit
+Phase B.
+
+## Phase B — AlphaZero-Conv mit Endgame-Curriculum (Pflicht, unabhängig von A)
+
+Ausgeführt **auch wenn Phase A das Primärziel erreicht** — die Frage
+„*lernt* RL Perfektion, statt sie zu imitieren?" ist eigenständig
+wertvoll. Basis: `python/train_alphazero_conv.py` + `az_conv_selfplay`
+(Doku: `docs/training/cnn/guide.md` §4).
+
+- [ ] **Start-State-Sampler** in `snake-core`/`snake-py`:
+      `sample_start_state(boundary, width, height, board_seed,
+      target_len)` — spielt eine Lehrer-Partie (`CycleSurgeon`) auf
+      `board_seed` und gibt den `GameState` beim ersten Tick mit
+      Schlangenlänge `target_len` zurück (deterministisch). In
+      `az_conv_selfplay` als Option `teacher_start_fraction: f32`
+      (CLI `--teacher-starts`, Default 0.5): dieser Anteil der
+      Self-Play-Partien startet von einem Lehrer-Zustand mit
+      `target_len ~ Uniform{3 … 0.9·Zellen}` (RNG des Self-Play-Seeds),
+      Rest startet normal. Value-Target/Return-Berechnung unverändert ab
+      dem Startzustand.
+- [ ] **Won-Bonus in der Suche**: Im dichten Schritt-Reward der geteilten
+      MCTS (`alphazero.rs`) terminales `Won` mit +1.0 belohnen (symmetrisch
+      zum Todes-Malus), damit „Brett gefüllt" von „lange überlebt"
+      unterscheidbar ist. MLP-AZ-Tests müssen grün bleiben (geteilte
+      Suche!).
+- [ ] **Smoke-Run** (Parameter wie in `docs/training/cnn/guide.md` §4,
+      plus `--teacher-starts 0.5`), Export-Self-Check muss durchlaufen.
+- [ ] **Echter Lauf direkt auf dieser Maschine**:
+      `--games-per-iter 128 --sims 24 --boundary mixed --max-ticks 2000
+      --teacher-starts 0.5 --conv-channels 16 16 16 --head-hidden 24
+      --epochs 4 --lr 1e-3 --seed 1 --eval-every 5 --eval-games 12
+      --eval-max-ticks 20000 --max-hours 6 --iterations 100000`.
+      Als Hintergrundprozess mit Log; alle ~30 min Eval-Kurve prüfen.
+- [ ] **Abbruchkriterium** (vorab fixiert): Liegt das Walls-Eval-Mittel
+      nach 6 h unter 60, wird **nicht** verlängert — Negativergebnis
+      dokumentieren (Lehre aus Run 026/027: Compute ersetzt keinen
+      Lernhebel). Optional *ein* Folgelauf mit `--teacher-starts 0.8`,
+      falls die Kurve klar steigend abgeschnitten wurde.
+- [ ] **Auswertung**: `bench_cnn` (200 Partien, 20 000 Ticks) für
+      `best.cnn`; Vergleichstabelle A vs. B vs. Run AZ-001 vs.
+      CycleSurgeon (`won%`, ⌀Score, ⌀Ticks, Params, Trainingskosten) im
+      Report; Deployment nach `assets/alphazero-cnn/best.cnn` nur, wenn
+      besser als Run AZ-001 (Walls 4.1 / Periodic 77.5). WASM-Kosten des
+      tieferen Netzes vor dem Einbetten messen (ein Frame-Budget-Check
+      im Browser via `/run-web` genügt).
+- [ ] **Blog-Notizen**: Wirkung des Curriculums auf die Walls-Schieflage,
+      Endgame-`won%`, Vergleich zur Distillation.
+
+**Done wenn:** Der Lauf ist mit vollem Budget (oder erfülltem
+Abbruchkriterium) durch, der Report samt Vergleichstabelle existiert, und
+das Ergebnis ist deployed **oder** als Negativergebnis dokumentiert.
+
+## Phase C — Gelernte Shortcut-Policy (nur konditional)
+
+**Nur ausführen, wenn weder A noch B das Primärziel erreicht haben.**
+Ehrliche Einordnung: Perfektion kommt hier aus der Maske, gelernt wird
+die Geschwindigkeit.
+
+- [ ] **Aktionsraum**: Kandidaten = alle per (gemeinsam genutztem)
+      `shortcut_is_safe` beweisbar sicheren Sprünge entlang der
+      Zyklusordnung des `CycleSurgeon`-Zyklus (+ „Zyklus folgen"). *Jede*
+      Policy über diesem Aktionsraum spielt perfekt.
+- [ ] **Kleines Scoring-MLP** über Kandidaten-Features
+      (Zyklus-Distanzgewinn, Vacate-Slack, Torus-Distanz zum Futter,
+      Schlangenlänge/Brettfüllung); Training per ES in `snake-train`
+      (vorhandener `evolve`-Kern), Fitness = −Ticks bis `Won`, gemischte
+      Topologien. Läuft direkt auf dieser Maschine (Richtwert ≤ 1 h).
+- [ ] **Benchmark**: 100 % `won` (per Konstruktion, trotzdem messen) und
+      weniger ⌀Ticks als der ungelernte `CycleSurgeon` — sonst lohnt der
+      Dropdown-Eintrag nicht (dann nur Report + Blog-Notiz).
+
+**Done wenn:** Eine gelernte Strategie gewinnt jede Partie und ist
+messbar schneller als der `CycleSurgeon` — oder Phase C wurde nicht
+gebraucht bzw. das Ergebnis ist dokumentiert und verworfen.
 
 ---
 
@@ -274,24 +407,30 @@ Partien abgesichert.
 
 - **Zählt das Safety-Masking?** Alle Netz-Strategien im Repo maskieren
   sofort tödliche Züge — das bleibt der Standard und gilt weiterhin als
-  „das Netz spielt". Tiefere Suche (MCTS) zur Inferenzzeit wäre dagegen
-  eine andere Kategorie und wird für das Primärziel *nicht* verwendet.
+  „das Netz spielt". Tiefere Suche (MCTS) zur Inferenzzeit wäre eine
+  andere Kategorie und wird für das Primärziel *nicht* verwendet.
+- **2-opt-Umkehrkosten (Phase D)**: Segmentumkehr ist O(Segment); der
+  Deckel (≤ 32) hält den Tick billig. Falls Relocate allein reicht
+  (messen!), 2-opt weglassen — weniger Code schlägt mehr Ops.
+- **DAgger-Lehrer im Lockstep (Phase A)**: Der Lehrer ist stateful
+  (mutierender Zyklus). Deshalb pro Partie eine eigene Lehrer-Instanz,
+  die dieselbe Zustandsfolge sieht wie der Student — *nicht* pro Zustand
+  frisch konstruieren (sonst wären Labels inkonsistent teuer/instabil).
 - **Fehlerraten-Mathematik**: 95 % Perfect-Rate über ~7 000 Züge heißt
   Per-Zug-Fehler ≲ 7·10⁻⁶ auf dem Spielpfad — erreichbar, weil die
   Lehrer-Policy fast deterministisch ist und Abweichungen selten fatal
-  sind (DAgger korrigiert zurück auf den Zyklus). Wenn nicht: Gate zu C.
+  sind (DAgger korrigiert zurück auf den Zyklus). Wenn nicht: Phase C.
 - **Generalisierung über Brettgrößen**: Das Conv-Netz ist größenagnostisch,
-  der Zyklus aber brettspezifisch. Primärziel ist 16×12; ob *ein* Netz
-  auch 24×18 perfekt spielt (Stretch), entscheidet sich erst nach A.
-  Notfalls: Training auf gemischten Größen.
+  der Zyklus brettspezifisch. Primärziel ist 16×12; der Stretch (24×18)
+  wird erst nach Erreichen des Primärziels geprüft (ggf. Training auf
+  gemischten Größen — eigener, optionaler Lauf).
 - **WASM-Budget**: Ein Perfect Game im Browser heißt ~10⁴ Conv-Forwards;
   bei den kleinen Netzen (~3–10 k Params) unkritisch erwartet, aber vor
-  dem Einbetten auf Preset-Größen messen (bes. bei tieferem Stack aus B).
-- **Ungerade Zeilenzahl**: Der Serpentinen-Zyklus braucht gerade
-  Zeilenzahl (alle Presets kompatibel). Das destillierte Netz erbt diese
-  Einschränkung implizit über die Trainingsdaten — für freie Feldgrößen
-  bleibt es Best-Effort, kein Perfektionsversprechen.
-- **Lehrer-Deckelung**: Der HamiltonRider ist auf Walls im Benchmark bei
-  ~180 (Tick-Limit, keine Tode). Für die Lehrer-Rollouts das Tick-Limit
-  hoch genug setzen (z. B. 20 000), damit nur `Won`-Partien als
-  Trainingsmaterial dienen.
+  dem Einbetten des tieferen Phase-B-Netzes messen.
+- **Ungerade Zeilenzahl**: Serpentinen-Zyklus braucht gerade Zeilenzahl
+  (alle Presets kompatibel). `CycleSurgeon` erbt die Einschränkung; die
+  destillierten Netze erben sie implizit über die Trainingsdaten — freie
+  Feldgrößen bleiben Best-Effort ohne Perfektionsversprechen.
+- **Lehrer-Deckelung**: Für Lehrer-Rollouts (Phase A) und den
+  Start-State-Sampler (Phase B) Tick-Limit 20 000 setzen, damit nur
+  `Won`-Partien als Material dienen.
