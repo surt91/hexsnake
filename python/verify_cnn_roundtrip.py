@@ -20,14 +20,14 @@ from hexsnake_rl.export import export_cnn
 from hexsnake_rl.hexconv import HexConvNet
 
 
-def main() -> int:
+def check_channels(in_ch: int) -> float:
+    """Roundtrip a net with `in_ch` input planes; return the max abs error."""
     th.manual_seed(0)
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(in_ch)
     w, h, boundary = 16, 12, "walls"
     n = w * h
-    in_ch = 4
 
-    model = HexConvNet(w, h, boundary, in_ch, [(4, 8), (8, 8)], [16, 12, 7])
+    model = HexConvNet(w, h, boundary, in_ch, [(in_ch, 8), (8, 8)], [16, 12, 7])
     model.eval()
 
     with tempfile.TemporaryDirectory() as d:
@@ -49,10 +49,20 @@ def main() -> int:
             dtype=np.float32,
         )
         max_err = max(max_err, float(np.max(np.abs(want - got))))
+    return max_err
 
-    print(f"max abs error torch vs rust: {max_err:.2e}")
-    assert max_err < 1e-4, "weight layout mismatch between Python export and Rust!"
-    print("OK: Python hex-conv export and Rust inference agree.")
+
+def main() -> int:
+    ok = True
+    # 4 channels (legacy) and 5 channels (with the vacate plane) must both
+    # roundtrip bit-for-bit through the .cnn format.
+    for in_ch in (4, 5):
+        err = check_channels(in_ch)
+        print(f"{in_ch} channels: max abs error torch vs rust: {err:.2e}")
+        if err >= 1e-4:
+            ok = False
+    assert ok, "weight layout mismatch between Python export and Rust!"
+    print("OK: Python hex-conv export and Rust inference agree (4 and 5 channels).")
     return 0
 
 

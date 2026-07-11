@@ -33,8 +33,11 @@ use crate::coords::{Direction, Offset};
 use crate::game::GameState;
 use crate::nn::Mlp;
 
-/// Input planes: body (excl. head), head, food, topology (1 = walls, 0 = torus).
+/// Default input planes: body (excl. head), head, food, topology (1 = walls,
+/// 0 = torus). A five-channel net adds a `vacate` plane (see [`build_planes`]).
 pub const CONV_CHANNELS: usize = 4;
+/// Maximum input planes the builder knows how to fill (adds `vacate`).
+pub const CONV_CHANNELS_VACATE: usize = 5;
 /// Kernel taps: the cell itself plus its six hex neighbors.
 const TAPS: usize = 7;
 const MAGIC: &str = "hexsnake-cnn v1";
@@ -141,7 +144,7 @@ impl HexConv {
     /// then head-cell readout ⊕ global pool → head.
     pub fn forward(&self, state: &GameState) -> Vec<f32> {
         let board = state.board();
-        let (planes, w, h) = build_planes(state);
+        let (planes, w, h) = build_planes(state, self.in_channels);
         let head = state.head();
         let head_i = (head.row as usize) * w + head.col as usize;
         self.forward_planes(&planes, w, h, board.boundary, head_i)
@@ -306,20 +309,43 @@ fn parse_one(tok: Option<&str>, what: &str) -> Result<usize, String> {
         .map_err(|e| format!("bad {what}: {e}"))
 }
 
-/// Build the `CONV_CHANNELS × h × w` input planes (channel-major, row-major):
-/// body (excl. head), head, food, topology. Mirrors the Python `grid`
-/// observation plus the topology plane.
-fn build_planes(state: &GameState) -> (Vec<f32>, usize, usize) {
+/// Build the `in_channels × h × w` input planes (channel-major, row-major).
+///
+/// Layout (Python `grid` observation plus topology, and optionally vacate):
+///
+/// | # | channel  | value |
+/// |---|----------|-------|
+/// | 0 | body     | 1.0 on body cells (head excluded) |
+/// | 1 | head     | 1.0 on the head cell |
+/// | 2 | food     | 1.0 on the food cell |
+/// | 3 | topology | 1.0 (walls) / 0.0 (torus), constant |
+/// | 4 | vacate   | body cell with tail-index `k` (tail k=1 … head k=len): `k/len`; free 0.0 |
+///
+/// `in_channels` must be [`CONV_CHANNELS`] (planes 0–3) or
+/// [`CONV_CHANNELS_VACATE`] (planes 0–4); any other value panics.
+fn build_planes(state: &GameState, in_channels: usize) -> (Vec<f32>, usize, usize) {
+    assert!(
+        in_channels == CONV_CHANNELS || in_channels == CONV_CHANNELS_VACATE,
+        "conv plane builder supports {CONV_CHANNELS} or {CONV_CHANNELS_VACATE} channels, got {in_channels}"
+    );
     let board = state.board();
     let (w, h) = (board.width as usize, board.height as usize);
     let plane = w * h;
-    let mut planes = vec![0.0f32; CONV_CHANNELS * plane];
+    let mut planes = vec![0.0f32; in_channels * plane];
     let head = state.head();
     let idx = |c: Offset| (c.row as usize) * w + c.col as usize;
 
-    for cell in state.snake() {
+    // `snake()` iterates head-first; head index 0, tail index len-1. The
+    // vacate time (ticks until the cell frees) is `len - i`, so the tail
+    // (freed next tick) gets 1 and the head gets `len`.
+    let len = state.snake_len();
+    for (i, cell) in state.snake().enumerate() {
         let ch = if cell == head { 1 } else { 0 };
         planes[ch * plane + idx(cell)] = 1.0;
+        if in_channels == CONV_CHANNELS_VACATE {
+            let k = (len - i) as f32;
+            planes[4 * plane + idx(cell)] = k / len as f32;
+        }
     }
     planes[2 * plane + idx(state.food())] = 1.0;
     let topo = match board.boundary {
@@ -401,6 +427,74 @@ mod tests {
         // Broken channel chain.
         assert!(HexConv::from_params(4, &[(4, 6), (8, 8)], &[16, 6], vec![0.0; 999]).is_err());
         assert!(HexConv::from_text("nope").is_err());
+    }
+
+    #[test]
+    fn vacate_plane_encodes_tail_distance() {
+        let state = GameState::new(Config {
+            width: 16,
+            height: 12,
+            ..Config::default()
+        });
+        let (planes, w, h) = build_planes(&state, CONV_CHANNELS_VACATE);
+        assert_eq!(planes.len(), CONV_CHANNELS_VACATE * w * h);
+        let plane = w * h;
+        let len = state.snake_len();
+        let idx = |c: Offset| (c.row as usize) * w + c.col as usize;
+
+        // Head (tail-index len) → 1.0; each body cell → (len - i)/len.
+        for (i, cell) in state.snake().enumerate() {
+            let expected = (len - i) as f32 / len as f32;
+            assert!(
+                (planes[4 * plane + idx(cell)] - expected).abs() < 1e-6,
+                "vacate at snake index {i} should be {expected}"
+            );
+        }
+        assert!((planes[4 * plane + idx(state.head())] - 1.0).abs() < 1e-6);
+        // Food is not on the snake → vacate 0 there.
+        assert_eq!(planes[4 * plane + idx(state.food())], 0.0);
+
+        // The first four planes are byte-identical to the 4-channel build.
+        let (four, _, _) = build_planes(&state, CONV_CHANNELS);
+        assert_eq!(four, planes[..CONV_CHANNELS * plane]);
+    }
+
+    #[test]
+    fn four_channel_net_still_forwards() {
+        // Regression: a 4-channel net keeps working after the builder learned
+        // about the fifth plane.
+        let net = four_channel_net();
+        let state = GameState::new(Config::default());
+        let out = net.forward(&state);
+        assert_eq!(out.len(), 6);
+    }
+
+    fn four_channel_net() -> HexConv {
+        let n_conv = ConvLayer::param_count(CONV_CHANNELS, 6);
+        let head_dims = [12usize, 6];
+        let n = n_conv + Mlp::param_count(&head_dims);
+        let params: Vec<f32> = (0..n).map(|i| ((i % 5) as f32 - 2.0) * 0.03).collect();
+        HexConv::from_params(CONV_CHANNELS, &[(CONV_CHANNELS, 6)], &head_dims, params).unwrap()
+    }
+
+    #[test]
+    fn five_channel_net_forwards_on_state() {
+        let n_conv = ConvLayer::param_count(CONV_CHANNELS_VACATE, 6) + ConvLayer::param_count(6, 6);
+        let head_dims = [12usize, 8, 6];
+        let n = n_conv + Mlp::param_count(&head_dims);
+        let params: Vec<f32> = (0..n).map(|i| ((i % 7) as f32 - 3.0) * 0.04).collect();
+        let net = HexConv::from_params(
+            CONV_CHANNELS_VACATE,
+            &[(CONV_CHANNELS_VACATE, 6), (6, 6)],
+            &head_dims,
+            params,
+        )
+        .unwrap();
+        let state = GameState::new(Config::default());
+        let a = net.forward(&state);
+        let b = net.forward(&state);
+        assert_eq!(a.len(), 6);
+        assert_eq!(a, b);
     }
 
     #[test]
