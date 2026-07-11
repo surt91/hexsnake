@@ -19,8 +19,17 @@ Monte-Carlo-Ergebnisse, weil dessen Tick-Budget zeitbasiert sein kann.)
 
 - Feste Seed-Liste (z. B. Seeds 0..100), damit Läufe vergleichbar und
   reproduzierbar sind — Strategien sehen identische Futter-Sequenzen.
-- Gemessen werden je Strategie: ⌀-Score, Median, Max, ⌀-Überlebenszeit
-  (Ticks), Timeout-Quote (Partie ohne Tod abgebrochen nach Tick-Limit).
+- Gemessen werden je Strategie: ⌀-Score, ⌀-Überlebenszeit (Ticks),
+  Max-Score, **`won%`** (Anteil Partien mit Status `Won`, Brett voll) und
+  **`⌀ticks(won)`** (mittlere Ticks der gewonnenen Partien, `—` wenn keine).
+- Perfect-Play-Referenzlauf:
+  `cargo run --release -p snake-core --example benchmark -- 50 20000`.
+  Tick-Limit 20 000, damit Walls-Hamilton-Partien nicht am Limit
+  abgeschnitten werden; HamiltonRider muss auf dem Torus 100 % `won`
+  zeigen (validiert die Metrik).
+- Eine einzelne `.cnn`-Datei bencht `examples/bench_cnn.rs`
+  (`<datei.cnn> <spiele> <max_ticks>`): 6-Output ⇒ `ConvNet`-Argmax,
+  7-Output ⇒ `AlphaZeroConv`-MCTS. Analog `bench_mlp` für `.mlp`.
 - Beide Randbedingungen (Wände und periodisch) auf dem Mittel-Preset 24×18
   durchlaufen, Ausgabe als Markdown-Tabelle auf stdout.
 

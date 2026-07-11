@@ -32,6 +32,10 @@ pub struct Summary {
     pub avg_score: f64,
     pub avg_ticks: f64,
     pub max_score: u32,
+    /// Fraction of games that ended with [`Status::Won`] (board full).
+    pub won_frac: f64,
+    /// Mean ticks over the won games only; `None` if none were won.
+    pub avg_ticks_won: Option<f64>,
 }
 
 /// Run `games` games with seeds `0..games`; the strategy is rebuilt per
@@ -45,6 +49,8 @@ pub fn run_series(
     let mut total_score = 0u64;
     let mut total_ticks = 0u64;
     let mut max_score = 0u32;
+    let mut won_games = 0u64;
+    let mut won_ticks = 0u64;
     for seed in 0..games {
         let config = Config { seed, ..base };
         let mut strategy = make_strategy(seed);
@@ -52,12 +58,18 @@ pub fn run_series(
         total_score += u64::from(result.score);
         total_ticks += result.ticks;
         max_score = max_score.max(result.score);
+        if result.status == Status::Won {
+            won_games += 1;
+            won_ticks += result.ticks;
+        }
     }
     Summary {
         games,
         avg_score: total_score as f64 / games as f64,
         avg_ticks: total_ticks as f64 / games as f64,
         max_score,
+        won_frac: won_games as f64 / games as f64,
+        avg_ticks_won: (won_games > 0).then(|| won_ticks as f64 / won_games as f64),
     }
 }
 

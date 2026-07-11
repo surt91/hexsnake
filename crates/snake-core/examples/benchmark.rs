@@ -63,14 +63,23 @@ fn main() {
         };
         println!("== {boundary:?} ==");
         println!(
-            "{:<16} {:>10} {:>12} {:>10}",
-            "Strategie", "⌀ Score", "⌀ Ticks", "max Score"
+            "{:<16} {:>10} {:>12} {:>10} {:>7} {:>12}",
+            "Strategie", "⌀ Score", "⌀ Ticks", "max Score", "won%", "⌀ticks(won)"
         );
         for (name, make) in &mut strategies.iter_mut().map(|(n, f)| (*n, f)) {
             let summary = run_series(make.as_mut(), base, games, max_ticks);
+            let ticks_won = summary
+                .avg_ticks_won
+                .map(|t| format!("{t:.1}"))
+                .unwrap_or_else(|| "—".to_string());
             println!(
-                "{:<16} {:>10.2} {:>12.1} {:>10}",
-                name, summary.avg_score, summary.avg_ticks, summary.max_score
+                "{:<16} {:>10.2} {:>12.1} {:>10} {:>6.1}% {:>12}",
+                name,
+                summary.avg_score,
+                summary.avg_ticks,
+                summary.max_score,
+                summary.won_frac * 100.0,
+                ticks_won
             );
         }
         println!();
