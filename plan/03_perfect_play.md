@@ -112,7 +112,7 @@ netto schädlich).
 
 Erst messen können, dann trainieren.
 
-- [ ] **Perfect-Rate im Benchmark**: `crates/snake-core/examples/benchmark.rs`
+- [x] **Perfect-Rate im Benchmark**: `crates/snake-core/examples/benchmark.rs`
       um zwei Spalten erweitern: `won%` (Anteil Partien mit Status `Won`)
       und `⌀ticks(won)` (mittlere Ticks der gewonnenen Partien; `—` wenn
       keine). Den Skill `/benchmark` (`.claude/skills/benchmark/SKILL.md`)
@@ -121,13 +121,13 @@ Erst messen können, dann trainieren.
       HamiltonRider muss auf dem Torus 100 % `won` zeigen — das validiert
       die Metrik. (Tick-Limit 20 000, damit Walls-Hamilton-Partien nicht
       am Limit abgeschnitten werden.)
-- [ ] **`bench_cnn`-Example** (`crates/snake-core/examples/bench_cnn.rs`)
+- [x] **`bench_cnn`-Example** (`crates/snake-core/examples/bench_cnn.rs`)
       analog zu `bench_mlp`: CLI `<datei.cnn> <spiele> <max_ticks>`,
       bencht die Datei als `ConvNet`-Strategie (6-Output) bzw. als
       `AlphaZeroConv` (7-Output, Sims wie `embedded()`), erkennbar an der
       Output-Dimension des Head. Gibt Score, `won%`, `⌀ticks` je Topologie
       aus.
-- [ ] **Vacate-Time-Ebene**: Plane-Builder in
+- [x] **Vacate-Time-Ebene**: Plane-Builder in
       `crates/snake-core/src/nn/conv.rs` auf 4-oder-5 Kanäle erweitern
       (Tabelle oben); PyTorch-Spiegel `python/hexsnake_rl/hexconv.py`
       identisch erweitern; `python/verify_cnn_roundtrip.py` prüft
@@ -255,6 +255,53 @@ als Regress-Schutz).
 **Done wenn:** `CycleSurgeon` gewinnt 100/100 Partien in beiden Topologien
 (16×12) und ist im Mittel ≥ 30 % schneller (Ticks) als der HamiltonRider;
 alle Property-Tests grün; im Dropdown wählbar.
+
+### ⚠ Problembericht (Umsetzung 2026-07-12): Speed-Ziel blockiert
+
+Der erste Implementierungsversuch offenbart einen **strukturellen Konflikt**,
+der so im Plan nicht vorgesehen war. Messungen (16×12, je 20 Seeds, Release,
+`⌀ticks(won)`):
+
+| Variante | won% | ⌀ticks Walls | ⌀ticks Periodic |
+|---|---|---|---|
+| HamiltonRider (Referenz, mit Shortcuts) | 100 / 98 | 4988 | 4581 |
+| Surgeon: Reshape **+ Shortcut** (`ride_cycle`) | ~60 % | — (stirbt) | — (stirbt) |
+| Surgeon: Reshape **+ striktes Folgen (Offset 1)** | **100 %** | 8390 | 7348 |
+
+**Zwei Kernbefunde:**
+
+1. **Shortcuts sind mit dynamischem Reshaping unvereinbar.** Der
+   `shortcut_is_safe`-Beweis (Vacate-Zeiten) setzt voraus, dass die Schlange
+   nach dem Sprung dem **aktuellen** Zyklus folgt. Wird der Zyklus im nächsten
+   Tick umgebaut, ist die Annahme verletzt — die Schlange fährt sich fest und
+   **stirbt** (nicht Livelock: echte `GameOver`, per Diagnose über 20 Seeds).
+   Damit fällt die im Plan-Abschnitt „Zugwahl" vorgesehene Shortcut-Nutzung
+   weg; sicher ist nur striktes Folgen des Zyklus-Nachfolgers (Offset 1), das
+   die Körper-Kontiguität (und damit den `Won`-Beweis) erhält.
+
+2. **Relocate/2-opt feuern auf dem Serpentinen-Zyklus fast nie.** Die
+   Plan-Annahme „auf dem Dreiecksgitter ist `p` adjazent `q` häufig" trifft
+   für die Serpentine **nicht** zu: die Zyklus-Nachbarn `prev[x]`/`next[x]`
+   einer Zelle liegen auf dem Hex-Ring 2 Schritte auseinander (z. B. NW & NE
+   bzw. SW & SE) und sind damit **nicht** benachbart. `p adj q` (Relocate)
+   und `b adj d` (2-opt, misst identisch für alle `MAX_SEGMENT` 32…192)
+   scheitern fast immer. Das Reshaping bringt zwar Gewinn gegenüber reinem
+   Serpentinen-Folgen (~8390 statt ~18000 Ticks), erreicht aber nicht die
+   Shortcut-Geschwindigkeit des HamiltonRiders.
+
+**Folge:** Reshape+Folgen ist **sicher und perfekt** (100 % `won` beide
+Topologien, 16×12 wie 24×18 bei genug Ticks) — taugt also als Lehrer für
+Phase A/B — ist aber **~1,7× langsamer** als der HamiltonRider statt 30 %
+schneller. Das Speed-`Done`-Kriterium und der 24×18-Property-Test bei
+20 000 Ticks (selbst Hamilton braucht dort ~24 000!) sind so nicht erfüllbar.
+
+**Status:** `crates/snake-core/src/strategy/cycle_surgeon.rs` implementiert
+die sichere Reshape+Folgen-Variante (Ops, Optimierer, Property-Tests grün);
+Dropdown/Benchmark noch offen. **Offene Frage an ein stärkeres Modell (fable):
+ein Reshaping/Repräsentation, das striktes Offset-1-Folgen erhält (für den
+Sicherheitsbeweis) und trotzdem ≥ 30 % schneller als der HamiltonRider ist.**
+Bis dahin dient der HamiltonRider (bzw. der langsame, perfekte Surgeon) als
+Lehrer, und Phase A/B laufen unabhängig weiter.
 
 ## Phase A — Lehrer-Distillation mit DAgger (Pflicht)
 

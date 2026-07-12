@@ -9,6 +9,113 @@ const DEBUG_PATH_LEN: usize = 24;
 /// vacate times — absorbs growth from food eaten along the way.
 const SHORTCUT_SAFETY_MARGIN: u32 = 2;
 
+/// Cycle steps from `from` to `to` in cycle direction.
+pub(crate) fn cyclic_offset(len: usize, from: usize, to: usize) -> usize {
+    (to + len - from) % len
+}
+
+/// Is jumping to cycle position `target` safe? We assume the snake then
+/// follows the plain cycle: the cell reached after `k` further steps is
+/// entered at tick `1 + k`, which must be at or after the tick the body
+/// vacates it (plus a safety margin for growth). `cycle` is the cycle in
+/// order; `vacate[cell]` is the tick a body cell frees (0 = free).
+fn shortcut_is_safe(
+    board: &Board,
+    cycle: &[Offset],
+    target: usize,
+    vacate: &[u32],
+    snake_len: usize,
+) -> bool {
+    let lookahead = snake_len as u32 + SHORTCUT_SAFETY_MARGIN;
+    for k in 0..=lookahead {
+        let cell = cycle[(target + k as usize) % cycle.len()];
+        let vacates = vacate[cell_index(board, cell)];
+        if vacates != 0 && 1 + k < vacates + SHORTCUT_SAFETY_MARGIN {
+            return false;
+        }
+    }
+    true
+}
+
+/// Follow the given Hamiltonian cycle from the head, taking a provably safe
+/// shortcut when one exists. Shared by [`HamiltonRider`] (static cycle) and
+/// the `CycleSurgeon` (dynamically repaired cycle). `cycle` is the cell
+/// sequence in cycle order; `position[cell_index]` is each cell's index in
+/// that sequence. Fills `debug.path` with the upcoming cycle stretch.
+pub(crate) fn ride_cycle(
+    state: &GameState,
+    cycle: &[Offset],
+    position: &[usize],
+    debug: &mut StrategyDebug,
+) -> Direction {
+    let board = state.board();
+    let head_pos = position[cell_index(board, state.head())];
+    let food_offset = cyclic_offset(
+        cycle.len(),
+        head_pos,
+        position[cell_index(board, state.food())],
+    );
+
+    let mut vacate = vec![0u32; board.num_cells()];
+    let len = state.snake_len() as u32;
+    for (i, cell) in state.snake().enumerate() {
+        vacate[cell_index(board, cell)] = len - i as u32;
+    }
+
+    // Shortcuts only while the board is mostly empty; afterwards the
+    // plain cycle is the only provably safe route.
+    let shortcuts_allowed = state.snake_len() * 2 < board.num_cells();
+
+    let mut best: Option<(Direction, usize)> = None;
+    for (dir, cell) in safe_moves(state) {
+        let target = position[cell_index(board, cell)];
+        let offset = cyclic_offset(cycle.len(), head_pos, target);
+        // Never move "backwards" along the cycle and never beyond the
+        // food (it would have to come around again).
+        if offset == 0 || offset > food_offset {
+            continue;
+        }
+        if offset > 1
+            && !(shortcuts_allowed
+                && shortcut_is_safe(board, cycle, target, &vacate, state.snake_len()))
+        {
+            continue;
+        }
+        if best.is_none_or(|(_, o)| offset > o) {
+            best = Some((dir, offset));
+        }
+    }
+
+    let chosen = best.map(|(dir, _)| dir).or_else(|| {
+        // No shortcut and the plain successor was filtered out (e.g.
+        // it lies beyond the food in cycle order): follow the cycle.
+        let next = cycle[(head_pos + 1) % cycle.len()];
+        safe_moves(state)
+            .into_iter()
+            .find(|(_, cell)| *cell == next)
+            .map(|(dir, _)| dir)
+    });
+
+    // Debug: show the upcoming stretch of the cycle.
+    debug.path.clear();
+    if let Some(dir) = chosen {
+        if let Some(cell) = board.neighbor(state.head(), dir) {
+            let mut pos = position[cell_index(board, cell)];
+            for _ in 0..DEBUG_PATH_LEN {
+                debug.path.push(cycle[pos]);
+                pos = (pos + 1) % cycle.len();
+            }
+        }
+    }
+
+    chosen.unwrap_or_else(|| {
+        safe_moves(state)
+            .first()
+            .map(|(dir, _)| *dir)
+            .unwrap_or_else(|| doomed_move(state))
+    })
+}
+
 /// Build a serpentine Hamiltonian cycle over the offset rectangle, or
 /// `None` if the dimensions are incompatible.
 ///
@@ -68,96 +175,39 @@ impl HamiltonRider {
             debug: StrategyDebug::default(),
         })
     }
-
-    /// Cycle steps from `from` to `to` in cycle direction.
-    fn cyclic_offset(&self, from: usize, to: usize) -> usize {
-        (to + self.cycle.len() - from) % self.cycle.len()
-    }
-
-    /// Is jumping to cycle position `target` safe? We assume the snake
-    /// then follows the plain cycle: the cell reached after `k` further
-    /// steps is entered at tick `1 + k`, which must be at or after the
-    /// tick the body vacates it (plus a safety margin for growth).
-    fn shortcut_is_safe(&self, state: &GameState, target: usize, vacate: &[u32]) -> bool {
-        let board = state.board();
-        let lookahead = state.snake_len() as u32 + SHORTCUT_SAFETY_MARGIN;
-        for k in 0..=lookahead {
-            let cell = self.cycle[(target + k as usize) % self.cycle.len()];
-            let vacates = vacate[cell_index(board, cell)];
-            if vacates != 0 && 1 + k < vacates + SHORTCUT_SAFETY_MARGIN {
-                return false;
-            }
-        }
-        true
-    }
 }
 
 impl Strategy for HamiltonRider {
     fn next_move(&mut self, state: &GameState) -> Direction {
-        let board = state.board();
-        let head_pos = self.position[cell_index(board, state.head())];
-        let food_offset =
-            self.cyclic_offset(head_pos, self.position[cell_index(board, state.food())]);
-
-        let mut vacate = vec![0u32; board.num_cells()];
-        let len = state.snake_len() as u32;
-        for (i, cell) in state.snake().enumerate() {
-            vacate[cell_index(board, cell)] = len - i as u32;
-        }
-
-        // Shortcuts only while the board is mostly empty; afterwards the
-        // plain cycle is the only provably safe route.
-        let shortcuts_allowed = state.snake_len() * 2 < board.num_cells();
-
-        let mut best: Option<(Direction, usize)> = None;
-        for (dir, cell) in safe_moves(state) {
-            let target = self.position[cell_index(board, cell)];
-            let offset = self.cyclic_offset(head_pos, target);
-            // Never move "backwards" along the cycle and never beyond the
-            // food (it would have to come around again).
-            if offset == 0 || offset > food_offset {
-                continue;
-            }
-            if offset > 1 && !(shortcuts_allowed && self.shortcut_is_safe(state, target, &vacate)) {
-                continue;
-            }
-            if best.is_none_or(|(_, o)| offset > o) {
-                best = Some((dir, offset));
-            }
-        }
-
-        let chosen = best.map(|(dir, _)| dir).or_else(|| {
-            // No shortcut and the plain successor was filtered out (e.g.
-            // it lies beyond the food in cycle order): follow the cycle.
-            let next = self.cycle[(head_pos + 1) % self.cycle.len()];
-            safe_moves(state)
-                .into_iter()
-                .find(|(_, cell)| *cell == next)
-                .map(|(dir, _)| dir)
-        });
-
-        // Debug: show the upcoming stretch of the cycle.
-        self.debug.path.clear();
-        if let Some(dir) = chosen {
-            if let Some(cell) = board.neighbor(state.head(), dir) {
-                let mut pos = self.position[cell_index(board, cell)];
-                for _ in 0..DEBUG_PATH_LEN {
-                    self.debug.path.push(self.cycle[pos]);
-                    pos = (pos + 1) % self.cycle.len();
-                }
-            }
-        }
-
-        chosen.unwrap_or_else(|| {
-            safe_moves(state)
-                .first()
-                .map(|(dir, _)| *dir)
-                .unwrap_or_else(|| doomed_move(state))
-        })
+        ride_cycle(state, &self.cycle, &self.position, &mut self.debug)
     }
 
     fn debug(&self) -> Option<&StrategyDebug> {
         Some(&self.debug)
+    }
+}
+
+/// Assert that `order` is a valid Hamiltonian cycle over `board`: every cell
+/// exactly once, consecutive cells (and last→first) hex-adjacent. Shared by
+/// the `HamiltonRider` and `CycleSurgeon` tests (arbiter for the surgeon's
+/// per-tick invariant).
+#[cfg(test)]
+pub(crate) fn assert_valid_cycle_order(board: &Board, order: &[Offset]) {
+    assert_eq!(order.len(), board.num_cells(), "visits every cell once");
+    let mut seen = vec![false; board.num_cells()];
+    for cell in order {
+        assert!(board.contains(*cell), "cell {cell:?} off board");
+        let idx = cell_index(board, *cell);
+        assert!(!seen[idx], "cell {cell:?} visited twice");
+        seen[idx] = true;
+    }
+    for i in 0..order.len() {
+        let a = order[i];
+        let b = order[(i + 1) % order.len()];
+        let adjacent = Direction::ALL
+            .into_iter()
+            .any(|d| board.neighbor(a, d) == Some(b));
+        assert!(adjacent, "{a:?} -> {b:?} not adjacent (step {i})");
     }
 }
 
@@ -173,22 +223,7 @@ mod tests {
         let board = Board::new(width, height, BoundaryMode::Walls);
         let cycle = serpentine_cycle(width, height)
             .unwrap_or_else(|| panic!("no cycle for {width}x{height}"));
-        assert_eq!(cycle.len(), board.num_cells(), "visits every cell once");
-        let mut seen = vec![false; board.num_cells()];
-        for cell in &cycle {
-            assert!(board.contains(*cell));
-            let idx = cell_index(&board, *cell);
-            assert!(!seen[idx], "cell {cell:?} visited twice");
-            seen[idx] = true;
-        }
-        for i in 0..cycle.len() {
-            let a = cycle[i];
-            let b = cycle[(i + 1) % cycle.len()];
-            let adjacent = Direction::ALL
-                .into_iter()
-                .any(|d| board.neighbor(a, d) == Some(b));
-            assert!(adjacent, "{a:?} -> {b:?} not adjacent (step {i})");
-        }
+        assert_valid_cycle_order(&board, &cycle);
     }
 
     #[test]

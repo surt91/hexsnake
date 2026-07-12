@@ -3,6 +3,7 @@
 
 mod alphazero;
 mod chaos;
+mod cycle_surgeon;
 mod greedy;
 mod hamilton;
 mod montecarlo;
@@ -14,6 +15,7 @@ pub use alphazero::{
     AzSample, ConvAzSample, ConvSelfPlayResult, SelfPlayResult, AZ_OUTPUTS,
 };
 pub use chaos::ChaosWalker;
+pub use cycle_surgeon::CycleSurgeon;
 pub use greedy::Greedy;
 pub use hamilton::{serpentine_cycle, HamiltonRider};
 pub use montecarlo::MonteCarlo;
