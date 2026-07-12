@@ -665,3 +665,30 @@ dass man es Monate später noch versteht.
   Operationskatalog ⇒ der Zyklus sollte sich schneller verbiegen lassen
   als im klassischen Fall. Bonus: Im Debug-Overlay kann man dem Zyklus
   beim Umbauen live zusehen.
+
+## Plan 03 — Umsetzung (Perfect Play)
+
+- **`won%` als eigentliche Zielmetrik**: Score/Ticks messen „gut", aber
+  „perfekt" ist binär — Brett voll (`Won`) oder nicht. Der Benchmark bekam
+  zwei Spalten (`won%`, `⌀ticks(won)`). Der Referenzlauf bestätigt, wie
+  einsam die Spitze ist: bei 20 000 Tick-Limit gewinnt auf 16×12 *nur* der
+  HamiltonRider (Walls 100 %, Torus 98 %); alle gelernten Netze stehen bei
+  0 % `won`. Nebenbefund: HamiltonRider stirbt auf einem Torus-Seed (98 %
+  statt 100 %) — seine Shortcut-Sicherheit ist am periodischen Rand nicht
+  ganz wasserdicht.
+- **Zyklus-Chirurg: der Hex-Twist ging nach hinten los**. Die Phase-D-Idee
+  („reicherer Operationskatalog ⇒ Zyklus verbiegt sich schneller") stieß auf
+  zwei harte Wände. (1) **Shortcuts sind mit Reshaping unvereinbar**: Der
+  Vacate-Sicherheitsbeweis der Abkürzung setzt einen *statischen* Zyklus für
+  die nächsten ~len Ticks voraus; baut man den Zyklus jeden Tick um, ist die
+  Annahme verletzt und die Schlange *stirbt* (nicht bloß Livelock). Sicher
+  ist nur striktes Offset-1-Folgen, das den Körper als zusammenhängenden
+  Zyklus-Bogen hält. (2) **Relocate/2-opt feuern kaum**: entgegen der
+  Vermutung sind die Zyklus-Nachbarn `prev[x]`/`next[x]` einer Serpentinen-
+  Zelle auf dem Hex-Ring *nicht* benachbart (2 Schritte auseinander, z. B.
+  NW & NE), also scheitert die zentrale Vorbedingung `p adj q` fast immer.
+  Ergebnis: 100 % `won` (perfekt, taugt als Lehrer), aber ~1,7× *langsamer*
+  als der HamiltonRider statt 30 % schneller. Lehre: „mehr mögliche
+  Operationen" heißt nicht „mehr *anwendbare* Operationen" — die Geometrie
+  des konkreten Zyklus entscheidet, und Sicherheit + Aggressivität stehen
+  hier in direktem Konflikt.
