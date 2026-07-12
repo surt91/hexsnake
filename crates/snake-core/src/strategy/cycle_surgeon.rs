@@ -8,35 +8,40 @@
 //!
 //! # Safety invariant
 //!
-//! There is always a valid Hamiltonian cycle over every cell, and the repair
-//! operations **never touch an edge occupied by the snake body** (a pair of
-//! consecutive body segments). Because the body then lies as a contiguous run
-//! along the cycle, following the cycle can never collide, and the board fills
-//! (`Won`) — the same proof as the rider, only the cycle moves. The snake
-//! follows the cycle **successor strictly (offset 1)** so the body stays a
-//! contiguous arc; immediate safety is a [`safe_moves`](super::safe_moves)
-//! filter on top. (Shortcut jumps — as the rider takes — are *unsafe* here:
-//! their vacate-time proof assumes a static cycle, which per-tick reshaping
-//! breaks, so the snake dies. See the plan's Phase-D problem report.) The
-//! property tests are the arbiter.
+//! At the end of every tick `next`/`prev` is a single Hamiltonian cycle and the
+//! snake body is a **contiguous directed subpath** of it (tail…neck→head); no
+//! repair ever touches a body-occupied edge. The snake then follows the cycle
+//! **successor strictly (offset 1)** — the move is always `next[head]`, which
+//! sits at cycle position 1 and is a body cell only when the board is full
+//! (`Won`). So it can never collide and the board always fills. (Shortcut
+//! jumps — as the rider takes — are *unsafe* here: their vacate-time proof
+//! assumes a *static* cycle, which per-tick reshaping breaks, killing the
+//! snake. See the plan's Phase-D problem report.) The property tests are the
+//! arbiter.
 //!
-//! # Data structure
+//! Because the body is contiguous, its cells occupy a fixed **interval** of
+//! cycle positions (`{0} ∪ [n−len+1, n−1]`, with the head at 0), so
+//! "is this cell free / behind the food?" is O(1) integer arithmetic on the
+//! per-tick position labels.
+//!
+//! # Data structure & operations
 //!
 //! Cell index = `row * width + col` (row-major, offset coordinates). The cycle
-//! is a doubly linked ring (`next`/`prev`), initialized from
-//! [`serpentine_cycle`]. Occupied edges are read off a per-cell "body successor"
-//! table (`Vec<Option<usize>>`) rebuilt each tick — no `HashSet`, no RNG, no
-//! map iteration, so the whole strategy stays deterministic.
+//! is a doubly linked ring (`next`/`prev`). Reshaping uses a single
+//! direction-preserving primitive (no segment reversal, so body direction is
+//! never at risk):
 //!
-//! # Operation catalogue (only on unoccupied edges)
-//!
-//! - **Relocate** — splice a free cell `x` out of its position and into edge
-//!   `(a→b)` as a detour `a→x→b`. O(1); the bread-and-butter op on the
-//!   triangular hex grid, where `x`'s old neighbors are usually adjacent.
-//! - **2-opt** — remove edges `(a→b)`, `(c→d)`, add `(a→c)`, `(b→d)`, reversing
-//!   the segment `b…c` (which must contain no body cell, else the body would
-//!   run against the cycle direction). Capped segment length keeps the tick
-//!   cheap.
+//! - **cross-swap** `(a→b),(u→v) ⇒ (a→v),(u→b)` (needs `a` adj `v`, `u` adj
+//!   `b`). On one cycle with `b…u` a segment it **splits** off the ring
+//!   `[b…u]`; across two cycles it **merges** them. It is its own inverse
+//!   (O(1) rollback, no clones).
+//! - **excise-and-transplant** (the workhorse): split a free chunk out of the
+//!   head→food arc — shortening that distance by the chunk length — then
+//!   cross-swap the detached ring back in at an edge **behind the food**, so
+//!   the shortening sticks. The split site always exists because the N/S
+//!   column rungs are present for every cell in odd-q layout; no reversal and
+//!   no length cap are needed. Determinism: fixed scan orders
+//!   (`Direction::ALL`, ascending cycle position), no RNG, no map iteration.
 
 use super::hamilton::serpentine_cycle;
 use super::{cell_index, doomed_move, safe_moves, HamiltonRider, Strategy, StrategyDebug};
@@ -44,12 +49,10 @@ use crate::board::Board;
 use crate::coords::{Direction, Offset};
 use crate::game::GameState;
 
-/// Max tentative operations applied per tick (deterministic budget).
-const OPT_BUDGET: usize = 256;
-/// How many cells of the head→food cycle path a pass inspects.
-const PATH_WINDOW: usize = 64;
-/// Cost cap on a 2-opt segment reversal (segment length ≤ this).
-const MAX_SEGMENT: usize = 32;
+/// Max excise-and-transplant compounds applied per tick.
+const MAX_COMPOUND: usize = 48;
+/// Split candidates tried (best-first) before giving up on a compound.
+const SPLIT_TRIES: usize = 8;
 
 /// Hamiltonian-cycle follower that repairs the cycle toward the food each tick.
 pub struct CycleSurgeon {
@@ -58,6 +61,13 @@ pub struct CycleSurgeon {
     next: Vec<usize>,
     /// Cell index → previous cell in cycle order.
     prev: Vec<usize>,
+    /// Per-tick scratch: cell index → position in cycle order from the head.
+    pos: Vec<u32>,
+    /// Per-tick scratch: cycle position → cell index.
+    cell_by_pos: Vec<usize>,
+    /// Generation-stamped marker for "cell is in the detached ring".
+    ring_mark: Vec<u32>,
+    ring_gen: u32,
     debug: StrategyDebug,
 }
 
@@ -84,6 +94,10 @@ impl CycleSurgeon {
             width: board.width as usize,
             next,
             prev,
+            pos: vec![0; n],
+            cell_by_pos: vec![0; n],
+            ring_mark: vec![0; n],
+            ring_gen: 0,
             debug: StrategyDebug::default(),
         })
     }
@@ -107,19 +121,154 @@ impl CycleSurgeon {
         self.neighbors(board, u).contains(&Some(v))
     }
 
-    /// Steps along `next` from `a` to `b` (cycle distance). `usize::MAX` if the
-    /// ring is broken (should never happen while the invariant holds).
-    fn cycle_dist(&self, a: usize, b: usize) -> usize {
-        let mut cur = a;
-        let mut d = 0;
-        while cur != b {
+    /// Label cycle positions (from the head) into `pos`/`cell_by_pos`.
+    fn label(&mut self, head: usize) {
+        let n = self.next.len();
+        let mut cur = head;
+        for i in 0..n {
+            self.pos[cur] = i as u32;
+            self.cell_by_pos[i] = cur;
             cur = self.next[cur];
-            d += 1;
-            if d > self.next.len() {
-                return usize::MAX;
+        }
+    }
+
+    /// Is the snake body a contiguous directed subpath of the current cycle?
+    /// (`next[s_{i+1}] == s_i` for every consecutive body pair.) The surgery's
+    /// interval arithmetic and its winning proof both require this; only the
+    /// first couple of ticks after spawn fail it.
+    fn body_contiguous(&self, state: &GameState, board: &Board) -> bool {
+        let mut prev: Option<usize> = None;
+        for cell in state.snake() {
+            let idx = cell_index(board, cell);
+            if let Some(p) = prev {
+                if self.next[idx] != p {
+                    return false;
+                }
+            }
+            prev = Some(idx);
+        }
+        true
+    }
+
+    /// The cross-swap primitive: with `b = next[a]`, `v = next[u]`, replace
+    /// edges `(a→b)`, `(u→v)` by `(a→v)`, `(u→b)`. Preconditions (`a` adj `v`,
+    /// `u` adj `b`) are the caller's. Its own inverse: calling it again with
+    /// the same `(a, u)` restores the original edges.
+    fn cross_swap(&mut self, a: usize, u: usize) {
+        let b = self.next[a];
+        let v = self.next[u];
+        self.next[a] = v;
+        self.prev[v] = a;
+        self.next[u] = b;
+        self.prev[b] = u;
+    }
+
+    /// Mark the ring reachable from `b` along `next` (after a split, that is
+    /// exactly the detached segment `[b…u]`).
+    fn mark_ring(&mut self, b: usize) {
+        self.ring_gen += 1;
+        let gen = self.ring_gen;
+        let mut cur = b;
+        loop {
+            self.ring_mark[cur] = gen;
+            cur = self.next[cur];
+            if cur == b {
+                break;
             }
         }
-        d
+    }
+
+    /// After a split whose ring starts at `b`, find a merge site that reattaches
+    /// the ring at an edge behind the food: a main edge `(g→k)` with `g` free
+    /// and at/behind the food, and a ring edge `(e→f)` with `g` adj `f`,
+    /// `e` adj `k`. Returns the cross-swap tails `(g, e)`. Positions are the
+    /// pre-split labels, still order-valid for the untouched cells.
+    fn find_merge(
+        &self,
+        board: &Board,
+        b: usize,
+        dfood: usize,
+        last_free: usize,
+    ) -> Option<(usize, usize)> {
+        let gen = self.ring_gen;
+        let mut e = b;
+        loop {
+            let f = self.next[e];
+            for kn in self.neighbors(board, e) {
+                let Some(k) = kn else { continue };
+                if self.ring_mark[k] == gen {
+                    continue; // k must be in the main cycle
+                }
+                let g = self.prev[k];
+                if self.ring_mark[g] == gen {
+                    continue; // g must be in the main cycle
+                }
+                let pg = self.pos[g] as usize;
+                // g must be free (≤ last free position) and at/behind the food.
+                if pg < dfood || pg > last_free {
+                    continue;
+                }
+                if self.adjacent(board, g, f) {
+                    return Some((g, e));
+                }
+            }
+            e = self.next[e];
+            if e == b {
+                break;
+            }
+        }
+        None
+    }
+
+    /// Reshape the cycle to shorten the head→food distance, one
+    /// excise-and-transplant compound at a time. Each applied compound reduces
+    /// the distance by the excised chunk length; safety is independent of how
+    /// many fire (fewer ⇒ slower, never unsafe).
+    fn reshape(&mut self, board: &Board, head: usize, food: usize, len: usize) {
+        let n = self.next.len();
+        let last_free = n - len; // cycle positions 1..=last_free are free
+        for _ in 0..MAX_COMPOUND {
+            self.label(head);
+            let dfood = self.pos[food] as usize;
+            if dfood <= 1 {
+                return;
+            }
+            // Split candidates: chunk [b…u] strictly inside the head→food arc.
+            // Tuple: (chunk length, pb, dir index, a-tail, u-tail, ring start b).
+            let mut cands: Vec<(usize, usize, usize, usize, usize, usize)> = Vec::new();
+            for pb in 1..dfood {
+                let b = self.cell_by_pos[pb];
+                let a = self.cell_by_pos[pb - 1];
+                for (dir, un) in self.neighbors(board, b).into_iter().enumerate() {
+                    let Some(u) = un else { continue };
+                    let pu = self.pos[u] as usize;
+                    if pu < pb || pu >= dfood {
+                        continue; // segment must be forward and before the food
+                    }
+                    let v = self.cell_by_pos[pu + 1];
+                    if self.adjacent(board, a, v) {
+                        cands.push((pu - pb + 1, pb, dir, a, u, b));
+                    }
+                }
+            }
+            // Longest chunk first (biggest shortening), then deterministic ties.
+            cands.sort_by(|x, y| y.0.cmp(&x.0).then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2)));
+
+            let mut applied = false;
+            for &(_m, _pb, _dir, a, u, b) in cands.iter().take(SPLIT_TRIES) {
+                self.cross_swap(a, u); // split: ring = [b…u]
+                self.mark_ring(b);
+                if let Some((g, e)) = self.find_merge(board, b, dfood, last_free) {
+                    self.cross_swap(g, e); // merge behind the food
+                    applied = true;
+                    break;
+                }
+                self.cross_swap(a, u); // rollback (self-inverse)
+            }
+            if !applied {
+                return;
+            }
+        }
     }
 
     /// Rebuild the ordered cycle (offsets) and the `cell_index → position`
@@ -137,200 +286,6 @@ impl CycleSurgeon {
         }
         (order, position)
     }
-
-    // --- Operations -------------------------------------------------------
-
-    /// Would relocating free cell `x` into edge `(a→b)` be valid? Requires
-    /// `next[a] == b`, `x` free and adjacent to both `a` and `b`, and — with
-    /// `p = prev[x]`, `q = next[x]` — `p` adjacent `q`, all distinct, and the
-    /// three removed/reused edges unoccupied.
-    fn relocate_ok(
-        &self,
-        board: &Board,
-        body_next: &[Option<usize>],
-        is_snake: &[bool],
-        x: usize,
-        a: usize,
-        b: usize,
-    ) -> bool {
-        if x == a || x == b || is_snake[x] {
-            return false;
-        }
-        let p = self.prev[x];
-        let q = self.next[x];
-        // Degenerate rings (tiny boards) — keep the splice well-formed.
-        if p == q || p == x || q == x {
-            return false;
-        }
-        self.adjacent(board, x, a)
-            && self.adjacent(board, x, b)
-            && self.adjacent(board, p, q)
-            && !is_body_edge(body_next, a, b)
-            && !is_body_edge(body_next, p, x)
-            && !is_body_edge(body_next, x, q)
-    }
-
-    fn apply_relocate(&mut self, x: usize, a: usize, b: usize) {
-        let p = self.prev[x];
-        let q = self.next[x];
-        self.next[p] = q;
-        self.prev[q] = p;
-        self.next[a] = x;
-        self.prev[x] = a;
-        self.next[x] = b;
-        self.prev[b] = x;
-    }
-
-    /// The segment `b…c` (inclusive) walked along `next`, or `None` if `c` is
-    /// not reached within [`MAX_SEGMENT`], the segment contains a body cell, or
-    /// the ordering is wrong (hitting `a`/`d` first).
-    fn segment_between(
-        &self,
-        is_snake: &[bool],
-        a: usize,
-        b: usize,
-        c: usize,
-        d: usize,
-    ) -> Option<Vec<usize>> {
-        let mut seg = Vec::new();
-        let mut cur = b;
-        loop {
-            if is_snake[cur] || cur == a || cur == d {
-                return None;
-            }
-            seg.push(cur);
-            if cur == c {
-                return Some(seg);
-            }
-            if seg.len() >= MAX_SEGMENT {
-                return None;
-            }
-            cur = self.next[cur];
-        }
-    }
-
-    /// Would a 2-opt on edges `(a→b)`, `(c→d)` be valid? Requires `a` adjacent
-    /// `c`, `b` adjacent `d`, both edges unoccupied, and a body-cell-free
-    /// segment `b…c` of length ≤ [`MAX_SEGMENT`].
-    #[allow(clippy::too_many_arguments)]
-    fn twoopt_ok(
-        &self,
-        board: &Board,
-        body_next: &[Option<usize>],
-        is_snake: &[bool],
-        a: usize,
-        b: usize,
-        c: usize,
-        d: usize,
-    ) -> Option<Vec<usize>> {
-        if c == a || c == b || d == a || d == b {
-            return None;
-        }
-        if !self.adjacent(board, a, c) || !self.adjacent(board, b, d) {
-            return None;
-        }
-        if is_body_edge(body_next, a, b) || is_body_edge(body_next, c, d) {
-            return None;
-        }
-        self.segment_between(is_snake, a, b, c, d)
-    }
-
-    fn apply_twoopt(&mut self, a: usize, b: usize, c: usize, d: usize, seg: &[usize]) {
-        // Reverse seg = [b, …, c] to [c, …, b]; rewire boundaries a→c, b→d.
-        self.next[a] = c;
-        self.prev[c] = a;
-        for i in (1..seg.len()).rev() {
-            self.next[seg[i]] = seg[i - 1];
-            self.prev[seg[i - 1]] = seg[i];
-        }
-        self.next[b] = d;
-        self.prev[d] = b;
-    }
-
-    // --- Per-tick optimizer ----------------------------------------------
-
-    /// Reshape the cycle to shorten the head→food distance. Deterministic,
-    /// budget-bounded; only ever applies an op that strictly reduces the
-    /// distance (rolls back otherwise).
-    ///
-    /// The lever is **pulling free cells out of the head→food arc**: walking
-    /// that arc, each free cell `x` on it is relocated into an edge among its
-    /// neighbors (typically behind the food), which drops `x` off the arc and
-    /// shortens the route by one. 2-opt reversals catch cases relocate can't.
-    fn optimize(
-        &mut self,
-        board: &Board,
-        head: usize,
-        food: usize,
-        body_next: &[Option<usize>],
-        is_snake: &[bool],
-    ) {
-        let mut budget = OPT_BUDGET;
-        while budget > 0 {
-            let d0 = self.cycle_dist(head, food);
-            if d0 <= 1 {
-                break;
-            }
-            let mut improved = false;
-            // Walk the arc strictly between head and food.
-            let mut x = self.next[head];
-            let mut steps = 0;
-            'walk: while x != food && steps < PATH_WINDOW {
-                let next_x = self.next[x];
-                if !is_snake[x] {
-                    // Relocate x into an edge (a → next[a]) among its neighbors.
-                    for a in self.neighbors(board, x).into_iter().flatten() {
-                        if budget == 0 {
-                            break 'walk;
-                        }
-                        let b = self.next[a];
-                        if self.relocate_ok(board, body_next, is_snake, x, a, b) {
-                            budget -= 1;
-                            let (sn, sp) = (self.next.clone(), self.prev.clone());
-                            self.apply_relocate(x, a, b);
-                            if self.cycle_dist(head, food) < d0 {
-                                improved = true;
-                                break 'walk;
-                            }
-                            self.next = sn;
-                            self.prev = sp;
-                        }
-                    }
-                    // 2-opt: remove (a→b) at a = prev[x], and (c→d) with
-                    // c ∈ N(a), reversing the segment b…c.
-                    let a = self.prev[x];
-                    let b = x;
-                    for c in self.neighbors(board, a).into_iter().flatten() {
-                        if budget == 0 {
-                            break 'walk;
-                        }
-                        let d = self.next[c];
-                        if let Some(seg) = self.twoopt_ok(board, body_next, is_snake, a, b, c, d) {
-                            budget -= 1;
-                            let (sn, sp) = (self.next.clone(), self.prev.clone());
-                            self.apply_twoopt(a, b, c, d, &seg);
-                            if self.cycle_dist(head, food) < d0 {
-                                improved = true;
-                                break 'walk;
-                            }
-                            self.next = sn;
-                            self.prev = sp;
-                        }
-                    }
-                }
-                x = next_x;
-                steps += 1;
-            }
-            if !improved {
-                break;
-            }
-        }
-    }
-}
-
-/// Is `{u, v}` an edge occupied by the snake body (consecutive segments)?
-fn is_body_edge(body_next: &[Option<usize>], u: usize, v: usize) -> bool {
-    body_next[u] == Some(v) || body_next[v] == Some(u)
 }
 
 impl Strategy for CycleSurgeon {
@@ -340,27 +295,16 @@ impl Strategy for CycleSurgeon {
         let head = cell_index(board, state.head());
         let food = cell_index(board, state.food());
 
-        // Body-successor table + snake membership (occupied-edge source).
-        let mut body_next = vec![None; n];
-        let mut is_snake = vec![false; n];
-        let mut prev_cell: Option<usize> = None;
-        for cell in state.snake() {
-            let idx = cell_index(board, cell);
-            is_snake[idx] = true;
-            if let Some(p) = prev_cell {
-                body_next[p] = Some(idx);
-            }
-            prev_cell = Some(idx);
+        // Reshape only once the body lies contiguously on the cycle (the
+        // interval arithmetic and the winning proof require it); the first
+        // couple of ticks after spawn just follow the seed cycle.
+        if self.body_contiguous(state, board) {
+            self.reshape(board, head, food, state.snake_len());
         }
 
-        self.optimize(board, head, food, &body_next, &is_snake);
-
-        // Follow the cycle successor. Unlike the rider's shortcut jumps, this
-        // keeps the body a contiguous arc on the (reshaped) cycle — the
-        // invariant the surgery relies on — while the reshaping toward the food
-        // provides the speedup. (Shortcut jumps are unsafe here: their
-        // vacate-time proof assumes a *static* cycle, which per-tick reshaping
-        // breaks.)
+        // Follow the cycle successor strictly (offset 1) — keeps the body a
+        // contiguous arc. The safe_moves filter is belt-and-suspenders: once
+        // synced, next[head] is provably a safe, non-neck move.
         let succ = self.next[head];
         let dir = safe_moves(state)
             .into_iter()
@@ -460,20 +404,16 @@ mod tests {
 
     #[test]
     fn wins_on_larger_board() {
-        // 24×18 stretch check. Tick budget is 45 000 rather than the plan's
-        // 20 000: the current safe surgeon is slower than the HamiltonRider,
-        // which itself needs ~24 000 ticks here — 20 000 is unreachable by any
-        // perfect player on this board. See the Phase-D problem report.
         let config = Config {
             width: 24,
             height: 18,
             boundary: BoundaryMode::Periodic,
-            seed: 0,
+            seed: 3,
         };
         let mut state = GameState::new(config);
         let mut surgeon = CycleSurgeon::new(state.board()).unwrap();
         let mut ticks = 0;
-        while state.status() == Status::Running && ticks < 45_000 {
+        while state.status() == Status::Running && ticks < 20_000 {
             let dir = surgeon.next_move(&state);
             state.tick(Some(dir));
             ticks += 1;

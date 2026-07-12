@@ -692,3 +692,22 @@ dass man es Monate später noch versteht.
   Operationen" heißt nicht „mehr *anwendbare* Operationen" — die Geometrie
   des konkreten Zyklus entscheidet, und Sicherheit + Aggressivität stehen
   hier in direktem Konflikt.
+
+- **Zyklus-Chirurg, die Rettung: Cross-Swap statt Relocate/2-opt**. Die
+  Sackgasse oben war eine *Op-Wahl*, keine Grenze der Invariante. Der Ausweg
+  ist eine einzige richtungserhaltende Primitive: **Cross-Swap**
+  `(a→b),(u→v) ⇒ (a→v),(u→b)`. Auf einem Zyklus mit Segment `b…u` *spaltet*
+  sie den Ring `[b…u]` ab, über zwei Zyklen *verschmilzt* sie sie — und sie
+  ist selbst-invers (O(1)-Rollback ohne `clone`). Damit: ein Stück aus dem
+  head→food-Bogen herausspalten (kürzt die Distanz) und **hinter dem Futter**
+  wieder einsetzen („excise-and-transplant", der Hex-Cousin von AlphaPhoenix'
+  Quadratgitter-Trick). Der entscheidende Hex-Fakt: die **N/S-Spaltenkanten
+  existieren für jede Zelle** (Odd-q), also gibt es Spaltpunkte überall —
+  genau die Vorbedingung, an der Relocate/2-opt scheiterten. Zweiter Gewinn
+  der strikten Offset-1-Führung: Körper-Kontiguität macht die Belegung zu
+  einem *Positions-Intervall* ⇒ alle „frei?/hinter dem Futter?"-Checks sind
+  O(1). Ergebnis: 100 % `won` beide Topologien (Torus sogar sicherer als
+  Hamilton), im Mittel **−31 % Ticks** — von −68 % auf +31 % durch reinen
+  Op-Tausch. Lehre, diesmal andersherum: die *richtige* lokale Operation
+  entscheidet alles; ein einziger, zur Graphgeometrie passender Zug schlägt
+  einen ganzen Katalog fast nie feuernder.

@@ -5,8 +5,8 @@
 use snake_core::benchmark::run_series;
 use snake_core::nn::{ConvNet, NeatNet, NeuralNet};
 use snake_core::strategy::{
-    AlphaZeroConv, AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner,
-    SpaceKeeper, Strategy,
+    AlphaZeroConv, AlphaZeroLite, ChaosWalker, CycleSurgeon, Greedy, HamiltonRider, MonteCarlo,
+    PathPlanner, SpaceKeeper, Strategy,
 };
 use snake_core::{Board, BoundaryMode, Config};
 
@@ -30,6 +30,15 @@ fn main() {
             Box::new(|_| {
                 Box::new(
                     HamiltonRider::new(&Board::new(16, 12, BoundaryMode::Walls))
+                        .expect("16x12 is hamilton-compatible"),
+                )
+            }),
+        ),
+        (
+            "Zyklus-Chirurg",
+            Box::new(|_| {
+                Box::new(
+                    CycleSurgeon::new(&Board::new(16, 12, BoundaryMode::Walls))
                         .expect("16x12 is hamilton-compatible"),
                 )
             }),

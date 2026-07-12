@@ -68,6 +68,7 @@ pub enum StrategyChoice {
     Planner,
     Space,
     Hamilton,
+    CycleSurgeon,
     MonteCarlo,
     NeuralNet,
     Neat,
@@ -79,13 +80,14 @@ pub enum StrategyChoice {
 }
 
 impl StrategyChoice {
-    pub const ALL: [StrategyChoice; 14] = [
+    pub const ALL: [StrategyChoice; 15] = [
         StrategyChoice::Human,
         StrategyChoice::Chaos,
         StrategyChoice::Greedy,
         StrategyChoice::Planner,
         StrategyChoice::Space,
         StrategyChoice::Hamilton,
+        StrategyChoice::CycleSurgeon,
         StrategyChoice::MonteCarlo,
         StrategyChoice::NeuralNet,
         StrategyChoice::Neat,
@@ -104,6 +106,7 @@ impl StrategyChoice {
             StrategyChoice::Planner => "Pfadplaner",
             StrategyChoice::Space => "Raumgreifer",
             StrategyChoice::Hamilton => "Hamilton",
+            StrategyChoice::CycleSurgeon => "Zyklus-Chirurg",
             StrategyChoice::MonteCarlo => "Monte-Carlo",
             StrategyChoice::NeuralNet => "Neural Net",
             StrategyChoice::Neat => "NEAT",
@@ -121,6 +124,9 @@ impl StrategyChoice {
         match self {
             StrategyChoice::Hamilton => {
                 snake_core::strategy::HamiltonRider::compatible(width, height)
+            }
+            StrategyChoice::CycleSurgeon => {
+                snake_core::strategy::CycleSurgeon::compatible(width, height)
             }
             _ => true,
         }

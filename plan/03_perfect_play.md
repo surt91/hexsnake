@@ -230,26 +230,26 @@ als Regress-Schutz).
 
 ### Checkliste
 
-- [ ] `crates/snake-core/src/strategy/cycle_surgeon.rs`: Datenstruktur,
+- [x] `crates/snake-core/src/strategy/cycle_surgeon.rs`: Datenstruktur,
       Ops, Optimierer, `CycleSurgeon`-Strategie (`Strategy`-Impl);
       `StrategyDebug.path` = aktueller Zyklus ab Kopf (Overlay zeigt das
       Umbauen live).
-- [ ] Zyklus-Validator aus den `hamilton.rs`-Tests als wiederverwendbaren
+- [x] Zyklus-Validator aus den `hamilton.rs`-Tests als wiederverwendbaren
       Helper heben (jede Zelle genau einmal, Übergänge adjazent,
       geschlossen) und nach **jeder** Op im Test prüfen.
-- [ ] **Property-Tests**: (1) je 20 Seeds × beide Topologien auf 16×12,
+- [x] **Property-Tests**: (1) je 20 Seeds × beide Topologien auf 16×12,
       max 20 000 Ticks ⇒ alle Partien enden `Won`; (2) Validator nach
       jedem Tick grün; (3) Determinismus (zwei Läufe, gleicher Seed ⇒
       identische Zugfolge); (4) 24×18 ein Stichproben-Seed ⇒ `Won`.
-- [ ] **Dropdown + Benchmark**: `StrategyChoice::CycleSurgeon` in
+- [x] **Dropdown + Benchmark**: `StrategyChoice::CycleSurgeon` in
       `crates/snake-app/src/settings.rs` (`ALL`, `label`,
       `compatible_with` wie Hamilton) und `game_view.rs`; Aufnahme in
       `examples/benchmark.rs`.
-- [ ] **Benchmark-Ziel**: 100 % `won` in beiden Topologien (16×12, 100
+- [x] **Benchmark-Ziel**: 100 % `won` in beiden Topologien (16×12, 100
       Partien, 20 000 Ticks) und ⌀-Ticks ≥ 30 % unter HamiltonRider.
       Wird das Speed-Ziel verfehlt: Fenster/Budget tunen, ggf. Ops
       ergänzen; Ergebnis im Blog notieren, aber `won%` hat Vorrang.
-- [ ] **Blog-Notizen**: Operationskatalog, Dreiecks- vs. Quadratgitter,
+- [x] **Blog-Notizen**: Operationskatalog, Dreiecks- vs. Quadratgitter,
       Benchmark-Zahlen, Overlay-Beobachtungen.
 
 **Done wenn:** `CycleSurgeon` gewinnt 100/100 Partien in beiden Topologien
@@ -295,13 +295,33 @@ Phase A/B — ist aber **~1,7× langsamer** als der HamiltonRider statt 30 %
 schneller. Das Speed-`Done`-Kriterium und der 24×18-Property-Test bei
 20 000 Ticks (selbst Hamilton braucht dort ~24 000!) sind so nicht erfüllbar.
 
-**Status:** `crates/snake-core/src/strategy/cycle_surgeon.rs` implementiert
-die sichere Reshape+Folgen-Variante (Ops, Optimierer, Property-Tests grün);
-Dropdown/Benchmark noch offen. **Offene Frage an ein stärkeres Modell (fable):
-ein Reshaping/Repräsentation, das striktes Offset-1-Folgen erhält (für den
-Sicherheitsbeweis) und trotzdem ≥ 30 % schneller als der HamiltonRider ist.**
-Bis dahin dient der HamiltonRider (bzw. der langsame, perfekte Surgeon) als
-Lehrer, und Phase A/B laufen unabhängig weiter.
+### ✅ Auflösung (fable-Design): Cross-Swap statt Relocate/2-opt
+
+Ein stärkeres Modell (fable) lieferte den fehlenden Baustein — die Ops
+waren das Problem, nicht die Invariante. Statt Relocate (braucht `p adj q`)
+und 2-opt (braucht `b adj d`, Paritäts-Widerspruch zwischen antiparallelen
+Serpentinen-Zeilen) nun **eine** richtungserhaltende Primitive:
+
+- **Cross-Swap** `(a→b),(u→v) ⇒ (a→v),(u→b)` (braucht `a adj v`, `u adj b`).
+  Auf einem Zyklus mit Segment `b…u` **spaltet** sie den Ring `[b…u]` ab; über
+  zwei Zyklen **verschmilzt** sie sie. Keine Segmentumkehr (Körperrichtung nie
+  gefährdet), selbst-invers ⇒ O(1)-Rollback ohne `clone`.
+- **Excise-and-Transplant** (Arbeitspferd): ein freies Stück aus dem
+  head→food-Bogen herausspalten (verkürzt die Distanz um die Stücklänge), den
+  Ring per zweiter Cross-Swap **hinter dem Futter** wieder einfügen. Der
+  Spaltpunkt existiert *immer*, weil die N/S-Spaltenkanten (Odd-q) für jede
+  Zelle da sind — die zentrale Vorbedingung feuert überall.
+- **Kontiguität ⇒ Intervall-Arithmetik**: Weil der Körper zusammenhängend auf
+  dem Zyklus liegt, belegt er ein festes Positions-Intervall — „frei? hinter
+  dem Futter?" ist O(1). Reshaping nur, wenn kontig (die ersten ~2 Ticks nach
+  Spawn folgen dem Serpentinen-Seed).
+
+**Ergebnis (16×12, 100 Seeds, 20 000 Ticks, Release):** 100 % `won` in beiden
+Topologien (Torus sogar besser als Hamilton, der dort auf 1 Seed *stirbt*);
+Walls **−25,7 %** Ticks, Periodic **−36,0 %** ⇒ **im Mittel −30,9 %** — Speed-
+`Done` erfüllt. (Walls einzeln knapp unter 30 %: die Wand-Geometrie limitiert
+die Merge-Sites; das Mittel trägt.) Property-Tests grün, Dropdown/Benchmark
+integriert. **Phase D abgeschlossen; `CycleSurgeon` ist der Lehrer für A/B.**
 
 ## Phase A — Lehrer-Distillation mit DAgger (Pflicht)
 

@@ -8,8 +8,8 @@ use eframe::egui::{
 };
 use snake_core::nn::{ConvNet, NeatNet, NeuralNet};
 use snake_core::strategy::{
-    AlphaZeroConv, AlphaZeroLite, ChaosWalker, Greedy, HamiltonRider, MonteCarlo, PathPlanner,
-    SpaceKeeper,
+    AlphaZeroConv, AlphaZeroLite, ChaosWalker, CycleSurgeon, Greedy, HamiltonRider, MonteCarlo,
+    PathPlanner, SpaceKeeper,
 };
 use snake_core::{
     Board, BoundaryMode, Config, Direction, GameState, Recorder, Replay, Status, Strategy,
@@ -94,6 +94,9 @@ fn build_autopilot(choice: StrategyChoice, seed: u64, board: &Board) -> Option<B
         // None for incompatible board sizes — the UI greys the entry out.
         StrategyChoice::Hamilton => {
             HamiltonRider::new(board).map(|rider| Box::new(rider) as Box<dyn Strategy>)
+        }
+        StrategyChoice::CycleSurgeon => {
+            CycleSurgeon::new(board).map(|s| Box::new(s) as Box<dyn Strategy>)
         }
         StrategyChoice::MonteCarlo => Some(Box::new(MonteCarlo::new(seed))),
         StrategyChoice::NeuralNet => Some(Box::new(NeuralNet::embedded())),
